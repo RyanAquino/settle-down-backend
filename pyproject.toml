@@ -1,0 +1,16 @@
+[project]
+name = "settledown"
+version = "0.1.0"
+description = "Add your description here"
+requires-python = ">=3.12"
+dependencies = [
+    "black>=25.1.0",
+    "django-cors-headers>=4.8.0",
+    "django-ninja>=1.4.3",
+    "dotenv>=0.9.9",
+    "hypercorn>=0.17.3",
+    "psycopg2-binary>=2.9.10",
+    "pydantic-ai>=1.0.2",
+    "pyrebase4>=4.8.0",
+    "setuptools>=80.9.0",
+]
