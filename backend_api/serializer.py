@@ -1,5 +1,7 @@
 from django.contrib.auth.models import User
 from ninja import ModelSchema, Schema
+from ninja.errors import HttpError
+from pydantic import field_validator
 
 from backend_api.models import ReceiptItem, Receipt
 
@@ -27,6 +29,10 @@ class ReceiptPath(Schema):
 
 class ReceiptItemPath(Schema):
     receipt_item_id: int
+
+
+class ReceiptPatchIn(Schema):
+    paid_by: str
 
 
 class ReceiptItemPostIn(Schema):
@@ -64,3 +70,23 @@ class ReceiptGetOut(ModelSchema):
     @staticmethod
     def resolve_receipt_items(obj):
         return obj.receiptitem_set.all().order_by('item_order')
+
+
+class TransactionPostIn(Schema):
+    purpose: str
+    total_amount: float
+    paying_member_id: str
+    paying_member_total: float
+    other_member_id: str
+    other_member_total: float
+    group_id: str
+
+
+class OCRReceiptPostIn(Schema):
+    paid_by_username: str
+
+    @field_validator('paid_by_username')
+    def validate_paid_by_username(cls, value):
+        if not User.objects.filter(username=value).exists():
+            raise HttpError(404, "User does not exist")
+        return value

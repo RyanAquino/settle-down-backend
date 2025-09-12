@@ -11,7 +11,7 @@ from .dataclasses.llm7_override import LLM7ChatModel
 from .dataclasses.receipt_item import ReceiptData
 from .models import ReceiptItem, Receipt
 from .serializer import ReceiptItemGetOut, UserGetOutSchema, UserPostIn, UserPath, ReceiptPath, ReceiptGetOut, \
-    ReceiptItemPostIn, ReceiptItemPath, UserFilterQuery
+    ReceiptItemPostIn, ReceiptItemPath, UserFilterQuery, ReceiptPatchIn
 
 router = Router()
 
@@ -114,6 +114,14 @@ def patch_receipt_item(request, payload: PatchDict[ReceiptItemPostIn], path_para
     receipt_item.save()
     return 204, None
 
+
+@router.patch("/{receipt_id}/", response={204: None})
+def patch_receipt(request, path_params: Path[ReceiptPath], payload: ReceiptPatchIn):
+    receipt = Receipt.objects.filter(id=path_params.receipt_id).first()
+    user = User.objects.get(username=payload.paid_by)
+    receipt.paid_by = user
+    receipt.save()
+    return 204, None
 
 @router.delete("/{receipt_id}/", response={204: None})
 def delete_receipts(request, path_params: Path[ReceiptPath]):

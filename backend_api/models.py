@@ -24,6 +24,7 @@ class Receipt(models.Model):
     receipt_file = FileField(null=True, blank=True, upload_to=_get_file_destination)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
+    paid_by = models.OneToOneField(User, on_delete=models.CASCADE, null=True, blank=True)
 
 class ReceiptItem(models.Model):
     en_name = models.CharField(max_length=100)
