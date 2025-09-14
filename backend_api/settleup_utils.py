@@ -31,6 +31,11 @@ class SettleUpClient:
         self.auth_params = {"auth": creds.get("idToken")}
 
     def get_groups(self) -> list[SettleUpGroup]:
+        cache_key = "settle_up_groups"
+
+        if v := cache.get(cache_key):
+            return v
+
         groups = requests.get(
             f"{settings.SETTLE_UP_BASE_URL}/userGroups/{self.user_id}.json",
             params=self.auth_params,
@@ -50,10 +55,16 @@ class SettleUpClient:
                     id=group_id,
                 )
             )
+        cache.set(cache_key, timeout=86500, value=groups_map)
 
         return groups_map
 
     def get_group_members_by_group(self, group_id):
+        cache_key = f"{group_id}_settle_up_users"
+
+        if v := cache.get(cache_key):
+            return v
+
         members = requests.get(
             f"{settings.SETTLE_UP_BASE_URL}/members/{group_id}.json",
             params=self.auth_params,
@@ -69,6 +80,8 @@ class SettleUpClient:
                     "name": name,
                 }
             )
+
+        cache.set(cache_key, timeout=86500, value=result)
 
         return result
 
