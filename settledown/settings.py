@@ -83,18 +83,18 @@ WSGI_APPLICATION = "settledown.wsgi.application"
 # https://docs.djangoproject.com/en/5.2/ref/settings/#databases
 
 DATABASES = {
-    "default": {
-        "ENGINE": "django.db.backends.postgresql",
-        "NAME": "mydb",  # Name of your PostgreSQL database
-        "USER": "user",  # PostgreSQL username
-        "PASSWORD": "password",  # PostgreSQL password
-        "HOST": "localhost",  # Or the IP address/hostname of your PostgreSQL server
-        "PORT": "5433",  # Default PostgreSQL port
-    }
-    # 'default': {
-    #     'ENGINE': 'django.db.backends.sqlite3',
-    #     'NAME': BASE_DIR / 'db.sqlite3',
+    # "default": {
+    #     "ENGINE": "django.db.backends.postgresql",
+    #     "NAME": "mydb",  # Name of your PostgreSQL database
+    #     "USER": "user",  # PostgreSQL username
+    #     "PASSWORD": "password",  # PostgreSQL password
+    #     "HOST": "localhost",  # Or the IP address/hostname of your PostgreSQL server
+    #     "PORT": "5433",  # Default PostgreSQL port
     # }
+    "default": {
+        "ENGINE": "django.db.backends.sqlite3",
+        "NAME": BASE_DIR / "db.sqlite3",
+    }
 }
 
 # Password validation
@@ -136,9 +136,9 @@ STATIC_URL = "static/"
 
 DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 
-CORS_ALLOW_ALL_ORIGINS=True
-MEDIA_ROOT=BASE_DIR / "media"
-MEDIA_URL="/media/"
+CORS_ALLOW_ALL_ORIGINS = True
+MEDIA_ROOT = BASE_DIR / "media"
+MEDIA_URL = "/media/"
 
 
 SETTLE_UP_CONFIG = {
@@ -151,3 +151,13 @@ SETTLE_UP_CONFIG = {
 SETTLE_UP_USER = os.getenv("SETTLE_UP_USER")
 SETTLE_UP_PASSWORD = os.getenv("SETTLE_UP_PASSWORD")
 SETTLE_UP_BASE_URL = f"https://{os.getenv("SETTLE_UP_API_DOMAIN")}"
+
+CACHES = {
+    "default": {
+        "BACKEND": "django_redis.cache.RedisCache",
+        "LOCATION": "redis://localhost:6379/1",  # Default Redis URL and port
+        "OPTIONS": {
+            "CLIENT_CLASS": "django_redis.client.DefaultClient",
+        },
+    }
+}
