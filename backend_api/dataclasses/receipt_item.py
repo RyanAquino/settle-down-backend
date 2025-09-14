@@ -1,4 +1,7 @@
+from datetime import datetime
+
 from pydantic import BaseModel, Field
+from django.utils import timezone
 
 
 class ReceiptItemData(BaseModel):
@@ -31,4 +34,7 @@ class ReceiptData(BaseModel):
     )
     total_amount: float = Field(
         0, description="The total amount of all items in the receipt"
+    )
+    receipt_date: datetime = Field(
+        default_factory=timezone.now, description="The date of the receipt"
     )

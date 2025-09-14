@@ -1,6 +1,9 @@
+from datetime import datetime
+
+from django.utils import timezone
 from ninja import Schema
 from ninja.errors import HttpError
-from pydantic import Field
+from pydantic import Field, model_validator
 from pydantic import field_validator
 
 from backend_api.dataclasses.receipt_item import ReceiptItemData
@@ -50,12 +53,13 @@ class SettleUpUserSchema(Schema):
 class TransactionPostIn(Schema):
     purpose: str
     total_amount: float
-    tax_amount: float
+    tax_amount: float = 0.0
     paying_member_id: str
     paying_member_total: float
     other_member_id: str
     other_member_total: float
     group_id: str
+    receipt_date: datetime | None = Field(None, description="The date of the receipt in Japan timezone")
 
 
 class OCRReceiptPostIn(Schema):
@@ -81,4 +85,7 @@ class OCRReceiptPostOut(Schema):
     )
     total_amount: float = Field(
         0, description="The total amount of all items in the receipt"
+    )
+    receipt_date: datetime = Field(
+        default_factory=timezone.now, description="The date of the receipt"
     )

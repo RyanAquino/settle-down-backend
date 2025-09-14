@@ -1,6 +1,8 @@
 import math
 import time
 from functools import reduce
+from zoneinfo import ZoneInfo
+from datetime import timezone
 
 import pyrebase
 import requests
@@ -105,9 +107,19 @@ class SettleUpClient:
         return weights
 
     def create_transaction(self, payload: TransactionPostIn):
+        # Milliseconds since epoch
         now = time.time_ns() // 1_000_000
 
-        if payload.tax_amount != 0:
+        if payload.receipt_date:
+            jp_time = payload.receipt_date.replace(tzinfo=ZoneInfo("Asia/Tokyo"))
+            now = int(jp_time.astimezone(timezone.utc).timestamp() * 1000)
+
+        tax_amount = payload.tax_amount
+        if (
+            payload.tax_amount != 0
+            and payload.other_member_total > 0
+            and payload.paying_member_total > 0
+        ):
             tax_amount = payload.tax_amount / 2
 
         paying_member_total, other_member_total = self._compute_weights(
@@ -125,16 +137,7 @@ class SettleUpClient:
             "items": [
                 {
                     "amount": str(payload.total_amount),
-                    "forWhom": [
-                        {
-                            "memberId": payload.other_member_id,
-                            "weight": str(other_member_total),
-                        },
-                        {
-                            "memberId": payload.paying_member_id,
-                            "weight": str(paying_member_total),
-                        },
-                    ],
+                    "forWhom": [],
                 }
             ],
             # "receiptUrl": ""
@@ -147,6 +150,23 @@ class SettleUpClient:
                 }
             ],
         }
+
+        if payload.other_member_total > 0:
+            transaction_payload["items"][0]["forWhom"].append(
+                {
+                    "memberId": payload.other_member_id,
+                    "weight": str(other_member_total),
+                },
+            )
+
+        if payload.paying_member_total > 0:
+            transaction_payload["items"][0]["forWhom"].append(
+                {
+                    "memberId": payload.paying_member_id,
+                    "weight": str(paying_member_total),
+                },
+            )
+
         response = requests.post(
             f"{settings.SETTLE_UP_BASE_URL}/transactions/{payload.group_id}.json",
             json=transaction_payload,
