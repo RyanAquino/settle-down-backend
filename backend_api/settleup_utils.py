@@ -96,13 +96,13 @@ class SettleUpClient:
         returns: list of weights (e.g., [9, 16])
         """
         # Step 1: convert shares to integers if they aren't already
-        shares = [int(round(s)) for s in shares]
+        scaled = [int(round(s * 100)) for s in shares]
 
         # Step 2: find GCD of all shares
-        gcd_all = reduce(math.gcd, shares)
+        gcd_all = reduce(math.gcd, scaled)
 
         # Step 3: divide each share by the GCD to get weights
-        weights = [s // gcd_all for s in shares]
+        weights = [s // gcd_all for s in scaled]
 
         return weights
 
