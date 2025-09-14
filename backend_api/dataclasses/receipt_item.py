@@ -20,8 +20,12 @@ class ReceiptItemData(BaseModel):
 
 class ReceiptData(BaseModel):
     receipt_items: list[ReceiptItemData]
-    en_shop_name: str = Field(..., description="The name of the shop in the receipt in english")
-    jp_shop_name: str = Field(..., description="The name of the shop in the receipt in japanese")
+    en_shop_name: str = Field(
+        ..., description="The name of the shop in the receipt in english"
+    )
+    jp_shop_name: str = Field(
+        ..., description="The name of the shop in the receipt in japanese"
+    )
     tax_amount: float = Field(
         0, description="The tax amount of the receipt if applicable"
     )
