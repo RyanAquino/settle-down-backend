@@ -11,7 +11,7 @@ from .dataclasses.llm7_override import LLM7ChatModel
 from .dataclasses.receipt_item import ReceiptData
 from .models import ReceiptItem, Receipt
 from .serializer import ReceiptItemGetOut, UserGetOutSchema, UserPostIn, UserPath, ReceiptPath, ReceiptGetOut, \
-    ReceiptItemPostIn, ReceiptItemPath, UserFilterQuery, ReceiptPatchIn
+    ReceiptItemPostIn, ReceiptItemPath, UserFilterQuery, ReceiptPatchIn, OCRReceiptPostOut
 
 router = Router()
 
@@ -45,10 +45,10 @@ def get_receipt_items(request):
     return Receipt.objects.all()
 
 
-@router.post("/receipt-items/", response={204: None})
+@router.post("/receipt-items/", response={200: OCRReceiptPostOut})
 async def post_ocr_receipt(request, file: File[UploadedFile]):
     client = AsyncOpenAI(
-        base_url="https://api.llm7.io/v1",
+        # base_url="https://api.llm7.io/v1",
         api_key=settings.LLM_API_KEY,
     )
     model = LLM7ChatModel(
@@ -77,27 +77,7 @@ async def post_ocr_receipt(request, file: File[UploadedFile]):
 
     results = result.output
 
-    if not results:
-        return
-
-    receipt = await Receipt.objects.acreate(shop_name=results.shop_name, receipt_file=file)
-
-    receipt_items = []
-    for item in results.receipt_items:
-        receipt_items.append(
-            ReceiptItem(
-                receipt=receipt,
-                en_name=item.english_name,
-                jp_name=item.japanese_name,
-                cost=item.cost,
-                quantity=item.quantity,
-                discount=item.discount,
-                item_order=item.item_order,
-            )
-        )
-
-    await ReceiptItem.objects.abulk_create(receipt_items)
-
+    return results
 
 @router.get("/receipt-items/{receipt_item_id}/", response={200: ReceiptItemGetOut})
 def get_receipt_item(request, path_params: Path[ReceiptItemPath]):

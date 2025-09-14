@@ -1,8 +1,10 @@
 from django.contrib.auth.models import User
+from pydantic import Field
 from ninja import ModelSchema, Schema
 from ninja.errors import HttpError
 from pydantic import field_validator
 
+from backend_api.dataclasses.receipt_item import ReceiptItemData
 from backend_api.models import ReceiptItem, Receipt
 
 
@@ -59,6 +61,10 @@ class SettleUpGroupSchema(Schema):
     name: str
     id: str
 
+class SettleUpUserSchema(Schema):
+    name: str
+    id: str
+
 
 class ReceiptGetOut(ModelSchema):
     receipt_items: list[ReceiptItemGetOut]
@@ -75,6 +81,7 @@ class ReceiptGetOut(ModelSchema):
 class TransactionPostIn(Schema):
     purpose: str
     total_amount: float
+    tax_amount: float
     paying_member_id: str
     paying_member_total: float
     other_member_id: str
@@ -90,3 +97,15 @@ class OCRReceiptPostIn(Schema):
         if not User.objects.filter(username=value).exists():
             raise HttpError(404, "User does not exist")
         return value
+
+
+class OCRReceiptPostOut(Schema):
+    receipt_items: list[ReceiptItemData]
+    en_shop_name: str = Field(..., description="The name of the shop in the receipt in english")
+    jp_shop_name: str = Field(..., description="The name of the shop in the receipt in japanese")
+    tax_amount: float = Field(
+        0, description="The tax amount of the receipt if applicable"
+    )
+    total_amount: float = Field(
+        0, description="The total amount of all items in the receipt"
+    )

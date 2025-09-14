@@ -151,3 +151,13 @@ SETTLE_UP_CONFIG = {
 SETTLE_UP_USER = os.getenv("SETTLE_UP_USER")
 SETTLE_UP_PASSWORD = os.getenv("SETTLE_UP_PASSWORD")
 SETTLE_UP_BASE_URL = f"https://{os.getenv("SETTLE_UP_API_DOMAIN")}"
+
+CACHES = {
+    "default": {
+        "BACKEND": "django_redis.cache.RedisCache",
+        "LOCATION": "redis://localhost:6379/1",  # Default Redis URL and port
+        "OPTIONS": {
+            "CLIENT_CLASS": "django_redis.client.DefaultClient",
+        }
+    }
+}

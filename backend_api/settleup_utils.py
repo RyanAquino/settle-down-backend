@@ -11,19 +11,28 @@ from django.db import transaction
 from backend_api.dataclasses.settleup import SettleUpGroup
 from backend_api.models import SettleUpGroup as SettleUpGroupDB
 from backend_api.serializer import TransactionPostIn
-
+from django.core.cache import cache
 
 class SettleUpClient:
 
     def __init__(self):
         firebase = pyrebase.initialize_app(settings.SETTLE_UP_CONFIG)
         pb_auth = firebase.auth()
-        print("Signin in...")
-        creds = pb_auth.sign_in_with_email_and_password(
-            settings.SETTLE_UP_USER,
-            settings.SETTLE_UP_PASSWORD,
-        )
-        print("creds: ", creds)
+        cache_key = f"{settings.SETTLE_UP_USER}_token"
+
+        if v := cache.get(cache_key):
+            creds = v
+        else:
+            creds = pb_auth.sign_in_with_email_and_password(
+                settings.SETTLE_UP_USER,
+                settings.SETTLE_UP_PASSWORD,
+            )
+            cache.set(
+                f"{settings.SETTLE_UP_USER}_token",
+                timeout=3500,
+                value=creds
+            )
+
         self.user_id = creds.get("localId")
         self.auth_params = {"auth": creds.get("idToken")}
 
@@ -46,6 +55,20 @@ class SettleUpClient:
             )
 
         return groups_map
+
+    def get_group_members_by_group(self, group_id):
+        members = requests.get(f"{settings.SETTLE_UP_BASE_URL}/members/{group_id}.json", params=self.auth_params)
+        members = members.json()
+        result = []
+
+        for member_id, metadata in members.items():
+            name = metadata.get("name")
+            result.append({
+                "id": member_id,
+                "name": name,
+            })
+
+        return result
 
     @transaction.atomic
     def get_or_create_group_members(self, groups):
@@ -87,10 +110,14 @@ class SettleUpClient:
     ):
         now = time.time_ns() // 1_000_000
 
+        if payload.tax_amount != 0:
+            tax_amount = payload.tax_amount / 2
+
         paying_member_total, other_member_total = self._compute_weights(
-            (payload.paying_member_total,
-            payload.other_member_total)
+            (payload.paying_member_total + tax_amount,
+            payload.other_member_total + tax_amount)
         )
+
         transaction_payload = {
             "currencyCode": "JPY",
             "dateTime": now,
@@ -111,6 +138,7 @@ class SettleUpClient:
                     ],
                 }
             ],
+            # "receiptUrl": ""
             "purpose": payload.purpose,
             "type": "expense",
             "whoPaid": [{"memberId": payload.paying_member_id, "weight": str(payload.total_amount)}],

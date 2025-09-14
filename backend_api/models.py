@@ -18,13 +18,15 @@ def _get_file_destination(self, filename) -> str:
     filename = f"{uuid.uuid4()}.{extension}"
     return f"media/{filename}"
 
-# Create your models here.
+
 class Receipt(models.Model):
-    shop_name = CharField(max_length=100, null=True, blank=True)
-    receipt_file = FileField(null=True, blank=True, upload_to=_get_file_destination)
+    shop_name = CharField(max_length=100)
+    receipt_file = FileField(upload_to=_get_file_destination)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
-    paid_by = models.OneToOneField(User, on_delete=models.CASCADE, null=True, blank=True)
+    paid_by = models.ForeignKey(User, on_delete=models.CASCADE, null=True, blank=True)
+    tax_amount = models.DecimalField(decimal_places=2, max_digits=10, null=True, blank=True)
+    total_amount = models.DecimalField(decimal_places=2, max_digits=10, null=True, blank=True)
 
 class ReceiptItem(models.Model):
     en_name = models.CharField(max_length=100)

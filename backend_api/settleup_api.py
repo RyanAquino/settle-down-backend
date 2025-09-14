@@ -4,7 +4,7 @@ from ninja import Router
 from ninja.pagination import paginate
 
 from backend_api.models import SettleUpGroup
-from backend_api.serializer import SettleUpGroupSchema, TransactionPostIn
+from backend_api.serializer import SettleUpGroupSchema, TransactionPostIn, SettleUpUserSchema
 from backend_api.settleup_utils import SettleUpClient
 from django.conf import settings
 
@@ -18,6 +18,14 @@ def get_settle_up_groups(request):
     groups = settle_up_client.get_groups()
 
     return groups
+
+
+@router.get("/users/", response={200: list[SettleUpUserSchema]})
+@paginate
+def get_settle_up_users(request, group_id: str):
+    settle_up_client = SettleUpClient()
+    return settle_up_client.get_group_members_by_group(group_id)
+
 
 
 @router.post("/sync-users/", response={204: None})
