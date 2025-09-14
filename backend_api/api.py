@@ -1,7 +1,7 @@
 from django.conf import settings
 from ninja import Router, File, UploadedFile
 from openai import AsyncOpenAI
-from pydantic_ai import Agent, PromptedOutput, BinaryContent
+from pydantic_ai import Agent, BinaryContent
 from pydantic_ai.providers.openai import OpenAIProvider
 
 from .dataclasses.llm7_override import LLM7ChatModel
@@ -22,13 +22,17 @@ async def post_ocr_receipt(request, file: File[UploadedFile]):
     )
     agent = Agent(
         model=model,
-        output_type=PromptedOutput(ReceiptData),
+        # output_type=PromptedOutput(ReceiptData),
+        output_type=ReceiptData,
         system_prompt="""
-            You are a helpful assistant. Your task is to extract a list of all purchased items from a given image receipt and the shop name if provided.
-            The receipt might contain multiple items and might be in Japanese text. You must make sure the results are returned in the order they are listed in the receipt
-            The receipt might contain discounts, if so subtract those to the item mentioned above the discount or on the same level whichever is applicable.  
-            Return ONLY the structured list with translated english/japanese text. 
+            You are a helpful assistant. Analyze the provided receipt image and return a structured output with:
+            
+            1. Shop name (if present).
+            2. List of purchased items in the order they appear on the receipt.
+               a. Each item should include both the Japanese text and its English translation.
+               b. If a discount applies, subtract it from the item directly above.
         """,
+        # 3. Return only the structured list (no explanations, extra text, or commentary).
     )
 
     result = await agent.run(
