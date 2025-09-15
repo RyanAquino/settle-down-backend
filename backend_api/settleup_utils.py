@@ -168,7 +168,7 @@ class SettleUpClient:
             tax_percentage=payload.tax_percentage,
             split_receipt_items=payload.split_receipt_items,
             group_id=payload.group_id,
-            total_amount=payload.ocr_total_amount,
+            total_amount=payload.total_amount,
         )
 
         results = self._compute_weights(
@@ -183,7 +183,7 @@ class SettleUpClient:
             "fixedExchangeRate": False,
             "items": [
                 {
-                    "amount": str(payload.ocr_total_amount),
+                    "amount": str(payload.total_amount),
                     "forWhom": for_whom
                 }
             ],
@@ -193,7 +193,7 @@ class SettleUpClient:
             "whoPaid": [
                 {
                     "memberId": payload.paying_member_id,
-                    "weight": str(payload.ocr_total_amount),
+                    "weight": str(payload.total_amount),
                 }
             ],
         }

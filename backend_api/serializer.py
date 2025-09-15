@@ -59,7 +59,7 @@ class TransactionPostIn(Schema):
     purpose: str
     paying_member_id: str
     tax_percentage: int
-    ocr_total_amount: float
+    total_amount: float
     user_receipt_items: list[UserTransactionSchema]
     split_receipt_items: list[float] = Field(default_factory=list, description="Split receipt items")
     group_id: str
@@ -84,8 +84,8 @@ class OCRReceiptPostOut(Schema):
     jp_shop_name: str = Field(
         ..., description="The name of the shop in the receipt in japanese"
     )
-    tax_amount: float = Field(
-        0, description="The tax amount of the receipt if applicable"
+    tax_percentage: float = Field(
+        0, description="The tax percentage of the receipt if applicable"
     )
     total_amount: float = Field(
         0, description="The total amount of all items in the receipt"
