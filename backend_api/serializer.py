@@ -50,14 +50,18 @@ class SettleUpUserSchema(Schema):
     id: str
 
 
+class UserTransactionSchema(Schema):
+    member_id: str
+    cost: float
+
+
 class TransactionPostIn(Schema):
     purpose: str
-    total_amount: float
-    tax_amount: float = 0.0
     paying_member_id: str
-    paying_member_total: float
-    other_member_id: str
-    other_member_total: float
+    tax_percentage: int
+    ocr_total_amount: float
+    user_receipt_items: list[UserTransactionSchema]
+    split_receipt_items: list[float] = Field(default_factory=list, description="Split receipt items")
     group_id: str
     receipt_date: datetime | None = Field(None, description="The date of the receipt in Japan timezone")
 
