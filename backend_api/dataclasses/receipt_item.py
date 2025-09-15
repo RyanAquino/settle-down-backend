@@ -18,7 +18,7 @@ class ReceiptItemData(BaseModel):
     item_order: int = Field(description="The order of the items in the receipt")
     cost: float = Field(description="The cost of the purchased item")
     quantity: int = Field(description="The quantity of the purchased item")
-    discount: int = Field(0, description="The discounted value of the purchased item")
+    discount: int = Field(0, description="The discounted value of the purchased item if any is provided")
 
 
 class ReceiptData(BaseModel):
