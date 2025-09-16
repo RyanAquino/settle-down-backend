@@ -28,4 +28,4 @@ EXPOSE 8000
 
 # Run the Django prod server
 # CMD ["sleep", "infinity"]
-CMD ["uv", "run", "hypercorn", "--bind", "0.0.0.0:8000", "settledown.asgi:application", "--workers", "2"]
+CMD ["uv", "run", "hypercorn", "--bind", "0.0.0.0:8000", "settledown.asgi:application"]
