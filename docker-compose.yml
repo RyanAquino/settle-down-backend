@@ -4,3 +4,10 @@ services:
     restart: always
     ports:
       - "6379:6379"
+  app:
+    build: .
+    restart: always
+    ports:
+      - "8000:8000"
+    depends_on:
+      - redis
