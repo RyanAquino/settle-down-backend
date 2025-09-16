@@ -153,6 +153,7 @@ SETTLE_UP_PASSWORD = os.getenv("SETTLE_UP_PASSWORD")
 SETTLE_UP_BASE_URL = f"https://{os.getenv("SETTLE_UP_API_DOMAIN")}"
 
 REDIS_URL = os.getenv("REDIS_URL", "redis://localhost:6379/1")
+APP_AUTH = os.getenv("APP_AUTH")
 
 CACHES = {
     "default": {
