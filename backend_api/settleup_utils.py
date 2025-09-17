@@ -160,8 +160,8 @@ class SettleUpClient:
         now = time.time_ns() // 1_000_000
 
         if payload.receipt_date:
-            jp_time = payload.receipt_date.replace(tzinfo=ZoneInfo("Asia/Tokyo"))
-            now = int(jp_time.astimezone(timezone.utc).timestamp() * 1000)
+            now = payload.receipt_date.replace(tzinfo=timezone.utc)
+            now = int(now.timestamp() * 1000)
 
         member_receipt_item_total_map = self._compute_transaction(
             receipt_items=payload.user_receipt_items,

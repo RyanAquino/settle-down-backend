@@ -25,14 +25,17 @@ async def post_ocr_receipt(request, file: File[UploadedFile]):
         # output_type=PromptedOutput(ReceiptData),
         output_type=ReceiptData,
         system_prompt="""
-            You are a helpful assistant. Analyze the provided receipt image and return a structured output with:
+            You are an expert system for reading receipts.
+            You will be given an image of a receipt. The text in the image may be in Japanese and/or English.
+            Your task it to extract the following text information from the provided image.
             
-            1. Shop name (if present).
-            2. List of purchased items in the order they appear on the receipt.
-               a. Each item should include both the Japanese text and its English translation.
-               b. If a discount applies, subtract it from the item directly above.
+            1. Receipt items which are listed in the receipt containing the english and japanese item name, item order, cost, quantity, and discount if any.
+                a. If a discount applies, subtract it from the item directly above.
+            2. English and Japanese  name of the shop.
+            3. Tax percentage if any.
+            4. Total cost amount of all items in the receipt.
+            5. Datetime of the receipt.
         """,
-        # 3. Return only the structured list (no explanations, extra text, or commentary).
     )
 
     result = await agent.run(
