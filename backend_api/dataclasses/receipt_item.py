@@ -1,6 +1,6 @@
 from datetime import datetime
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, ConfigDict
 from django.utils import timezone
 
 
@@ -38,3 +38,5 @@ class ReceiptData(BaseModel):
     receipt_date: datetime = Field(
         default_factory=timezone.now, description="The date of the receipt"
     )
+
+    model_config = ConfigDict(extra="allow")

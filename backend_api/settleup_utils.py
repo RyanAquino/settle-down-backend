@@ -187,7 +187,6 @@ class SettleUpClient:
                     "forWhom": for_whom
                 }
             ],
-            # "receiptUrl": ""
             "purpose": payload.purpose,
             "type": "expense",
             "whoPaid": [
@@ -197,6 +196,9 @@ class SettleUpClient:
                 }
             ],
         }
+
+        if v := payload.receipt_image_url:
+            transaction_payload["receiptUrl"] = v
 
         response = requests.post(
             f"{settings.SETTLE_UP_BASE_URL}/transactions/{payload.group_id}.json",

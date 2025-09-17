@@ -7,6 +7,7 @@ from pydantic_ai.providers.openai import OpenAIProvider
 from .dataclasses.llm7_override import LLM7ChatModel
 from .dataclasses.receipt_item import ReceiptData
 from .serializer import OCRReceiptPostOut
+import requests
 
 router = Router()
 
@@ -47,5 +48,18 @@ async def post_ocr_receipt(request, file: File[UploadedFile]):
         ]
     )
     results = result.output
+
+    def upload_file(file_obj: UploadedFile):
+        file_obj.seek(0)
+        response = requests.post(
+            "https://catbox.moe/user/api.php",
+            data={"reqtype": "fileupload"},
+            files={"fileToUpload": file_obj},
+        )
+        if response.ok:
+            return response.text.strip()
+
+    url = upload_file(file)
+    results.receipt_image_url = url
 
     return results
