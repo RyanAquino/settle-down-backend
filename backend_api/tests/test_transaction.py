@@ -1,7 +1,3 @@
-import time
-
-import requests
-from django.conf import settings
 from django.test import TestCase
 
 from backend_api.serializer import UserTransactionSchema
@@ -9,7 +5,6 @@ from backend_api.settleup_utils import SettleUpClient
 
 
 class TestTransaction(TestCase):
-
     def test_single_member_transaction(self):
         """
         Test single member transaction 10% tax excluded in total.
@@ -26,7 +21,7 @@ class TestTransaction(TestCase):
             total_amount=99.0,
             group_id="-O_65sO713JKnTgmQpCt",
         )
-        assert result == {'-O_65sO85eKnYhJ4mfUh': 99.0}
+        assert result == {"-O_65sO85eKnYhJ4mfUh": 99.0}
 
     def test_single_member_with_tax_transaction(self):
         """
@@ -44,7 +39,7 @@ class TestTransaction(TestCase):
             total_amount=100,
             group_id="-O_65sO713JKnTgmQpCt",
         )
-        assert result == {'-O_65sO85eKnYhJ4mfUh': 100}
+        assert result == {"-O_65sO85eKnYhJ4mfUh": 100}
 
     def test_single_member_with_splits_with_tax_transaction(self):
         """
@@ -61,9 +56,9 @@ class TestTransaction(TestCase):
             tax_percentage=10,
             total_amount=200,
             split_receipt_items=[100],  # 50 per member + 5 (10% tax) = 55
-            group_id="-O_65sO713JKnTgmQpCt",    # 2 member group
+            group_id="-O_65sO713JKnTgmQpCt",  # 2 member group
         )
-        assert result == {'-O_65sO85eKnYhJ4mfUh': 150.0, '-O_65vk76uxDTYDTHDku': 50.0}
+        assert result == {"-O_65sO85eKnYhJ4mfUh": 150.0, "-O_65vk76uxDTYDTHDku": 50.0}
 
     def test_single_member_with_splits_without_tax_transaction(self):
         """
@@ -80,9 +75,9 @@ class TestTransaction(TestCase):
             tax_percentage=10,
             total_amount=198,
             split_receipt_items=[90],
-            group_id="-O_65sO713JKnTgmQpCt",    # 2 member group
+            group_id="-O_65sO713JKnTgmQpCt",  # 2 member group
         )
-        assert result == {'-O_65sO85eKnYhJ4mfUh': 148, '-O_65vk76uxDTYDTHDku': 49}
+        assert result == {"-O_65sO85eKnYhJ4mfUh": 148, "-O_65vk76uxDTYDTHDku": 49}
 
     def test_two_member_with_tax_transaction_without_split(self):
         settle_up_client = SettleUpClient()
@@ -101,7 +96,7 @@ class TestTransaction(TestCase):
             total_amount=200,
             group_id="-O_65sO713JKnTgmQpCt",  # 2 member group
         )
-        assert result == {'-O_65sO85eKnYhJ4mfUh': 100.0, '-O_65vk76uxDTYDTHDku': 100.0}
+        assert result == {"-O_65sO85eKnYhJ4mfUh": 100.0, "-O_65vk76uxDTYDTHDku": 100.0}
 
     def test_two_member_without_tax_transaction_without_split(self):
         settle_up_client = SettleUpClient()

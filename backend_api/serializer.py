@@ -61,10 +61,16 @@ class TransactionPostIn(Schema):
     tax_percentage: int
     total_amount: float
     user_receipt_items: list[UserTransactionSchema]
-    split_receipt_items: list[float] = Field(default_factory=list, description="Split receipt items")
+    split_receipt_items: list[float] = Field(
+        default_factory=list, description="Split receipt items"
+    )
     group_id: str
-    receipt_date: datetime | None = Field(None, description="The date of the receipt in Japan timezone")
-    receipt_image_url: str | None = Field(None, description="The url of the uploaded receipt image")
+    receipt_date: datetime | None = Field(
+        None, description="The date of the receipt in Japan timezone"
+    )
+    receipt_image_url: str | None = Field(
+        None, description="The url of the uploaded receipt image"
+    )
 
 
 class OCRReceiptPostIn(Schema):
@@ -94,4 +100,6 @@ class OCRReceiptPostOut(Schema):
     receipt_date: datetime = Field(
         default_factory=timezone.now, description="The date of the receipt"
     )
-    receipt_image_url: str = Field(..., description="The url of the uploaded receipt image")
+    receipt_image_url: str = Field(
+        ..., description="The url of the uploaded receipt image"
+    )

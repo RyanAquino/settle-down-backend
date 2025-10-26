@@ -17,6 +17,8 @@ from dotenv import load_dotenv
 load_dotenv()
 
 LLM_API_KEY = os.getenv("LLM_API_KEY")
+CLOUDINARY_API_SECRET = os.getenv("CLOUDINARY_API_SECRET")
+CLOUDINARY_API_KEY = os.getenv("CLOUDINARY_API_KEY")
 
 
 from pathlib import Path
@@ -144,13 +146,13 @@ MEDIA_URL = "/media/"
 SETTLE_UP_CONFIG = {
     "apiKey": os.getenv("SETTLE_UP_API_KEY"),
     "authDomain": os.getenv("SETTLE_UP_API_DOMAIN"),
-    "databaseURL": f"https://{os.getenv("SETTLE_UP_API_DOMAIN")}",
-    "storageBucket": f"{os.getenv("SETTLE_UP_API_NAMESPACE")}.appspot.com",
+    "databaseURL": f"https://{os.getenv('SETTLE_UP_API_DOMAIN')}",
+    "storageBucket": f"{os.getenv('SETTLE_UP_API_NAMESPACE')}.appspot.com",
     "projectId": os.getenv("SETTLE_UP_API_NAMESPACE"),
 }
 SETTLE_UP_USER = os.getenv("SETTLE_UP_USER")
 SETTLE_UP_PASSWORD = os.getenv("SETTLE_UP_PASSWORD")
-SETTLE_UP_BASE_URL = f"https://{os.getenv("SETTLE_UP_API_DOMAIN")}"
+SETTLE_UP_BASE_URL = f"https://{os.getenv('SETTLE_UP_API_DOMAIN')}"
 
 REDIS_URL = os.getenv("REDIS_URL", "redis://localhost:6379/1")
 APP_AUTH = os.getenv("APP_AUTH")

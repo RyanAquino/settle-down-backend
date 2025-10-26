@@ -2,7 +2,6 @@ import math
 import time
 from datetime import timezone
 from functools import reduce
-from zoneinfo import ZoneInfo
 
 import pyrebase
 import requests
@@ -15,7 +14,6 @@ from backend_api.serializer import TransactionPostIn, UserTransactionSchema
 
 
 class SettleUpClient:
-
     def __init__(self):
         firebase = pyrebase.initialize_app(settings.SETTLE_UP_CONFIG)
         pb_auth = firebase.auth()
@@ -58,6 +56,7 @@ class SettleUpClient:
                     id=group_id,
                 )
             )
+        groups_map = groups_map[::-1]
         cache.set(cache_key, timeout=86500, value=groups_map)
 
         return groups_map
@@ -113,7 +112,7 @@ class SettleUpClient:
         tax_percentage: int,
         group_id: str,
         total_amount: float = 0,
-        split_receipt_items: list[float] = None
+        split_receipt_items: list[float] = None,
     ):
         if split_receipt_items is None:
             split_receipt_items = []
@@ -136,12 +135,23 @@ class SettleUpClient:
         member_users = self.get_group_members_by_group(group_id)
         if split_receipt_items:
             for total_amt in split_receipt_items:
-                shared_tax += (total_amt + int(total_amt * tax_percentage))
+                shared_tax += total_amt + int(total_amt * tax_percentage)
 
-        should_compute_tax = sum([*member_receipt_tax_map.values() ,*member_receipt_item_total_map.values(), shared_tax]) == total_amount
+        should_compute_tax = (
+            sum(
+                [
+                    *member_receipt_tax_map.values(),
+                    *member_receipt_item_total_map.values(),
+                    shared_tax,
+                ]
+            )
+            == total_amount
+        )
         if should_compute_tax:
             for member_id in member_receipt_item_total_map.keys():
-                member_receipt_item_total_map[member_id] += member_receipt_tax_map.get(member_id, 0)
+                member_receipt_item_total_map[member_id] += member_receipt_tax_map.get(
+                    member_id, 0
+                )
 
         # Shared item split cost + tax if applicable
         for shared_item in split_receipt_items:
@@ -151,10 +161,11 @@ class SettleUpClient:
                 member_receipt_item_total_map[member_id] += portion_amt
 
                 if should_compute_tax:
-                    member_receipt_item_total_map[member_id] += int((portion_amt * tax_percentage))
+                    member_receipt_item_total_map[member_id] += int(
+                        (portion_amt * tax_percentage)
+                    )
 
         return member_receipt_item_total_map
-
 
     def create_transaction(self, payload: TransactionPostIn):
         now = time.time_ns() // 1_000_000
@@ -171,22 +182,21 @@ class SettleUpClient:
             total_amount=payload.total_amount,
         )
 
-        results = self._compute_weights(
-            tuple(member_receipt_item_total_map.values())
-        )
-        for_whom = [{"memberId": member_id, "weight": str(total_amt)} for member_id, total_amt in zip(member_receipt_item_total_map.keys(), results) if total_amt > 0]
+        results = self._compute_weights(tuple(member_receipt_item_total_map.values()))
+        for_whom = [
+            {"memberId": member_id, "weight": str(total_amt)}
+            for member_id, total_amt in zip(
+                member_receipt_item_total_map.keys(), results
+            )
+            if total_amt > 0
+        ]
 
         transaction_payload = {
             "currencyCode": "JPY",
             "dateTime": now,
             "exchangeRates": {"JPY": "1"},
             "fixedExchangeRate": False,
-            "items": [
-                {
-                    "amount": str(payload.total_amount),
-                    "forWhom": for_whom
-                }
-            ],
+            "items": [{"amount": str(payload.total_amount), "forWhom": for_whom}],
             "purpose": payload.purpose,
             "type": "expense",
             "whoPaid": [
