@@ -10,9 +10,10 @@ dependencies = [
     "django-ninja>=1.4.3",
     "django-redis>=6.0.0",
     "dotenv>=0.9.9",
+    "faststream>=0.6.3",
     "hypercorn>=0.17.3",
     "psycopg2-binary>=2.9.10",
-    "pydantic-ai>=1.0.2",
+    "pydantic-ai>=1.47.0",
     "pyrebase4>=4.8.0",
     "setuptools>=80.9.0",
 ]

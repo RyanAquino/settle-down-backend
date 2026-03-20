@@ -18,8 +18,9 @@ async def post_ocr_receipt(request, file: File[UploadedFile]):
         # base_url="https://api.llm7.io/v1",
         api_key=settings.LLM_API_KEY,
     )
+    # "gpt-5-nano-2025-08-07"
     model = LLM7ChatModel(
-        "gpt-5-nano-2025-08-07", provider=OpenAIProvider(openai_client=client)
+        "gpt-5-mini", provider=OpenAIProvider(openai_client=client)
     )
     agent = Agent(
         model=model,
@@ -27,22 +28,26 @@ async def post_ocr_receipt(request, file: File[UploadedFile]):
         output_type=ReceiptData,
         system_prompt="""
             You are an expert system for reading receipts.
-            You will be given an image of a receipt. The text in the image may be in Japanese and/or English.
+            You will be given receipts in a form of image. The text in the image receipt may be in Japanese and/or English.
             Your task it to extract the following text information from the provided image.
+            if there is no cost on a particular receipt item, then don't include it.
             
-            1. Receipt items which are listed in the receipt containing the english and japanese item name, item order, cost, quantity, and discount if any.
+            1. Receipt items which are listed in the receipt containing the english or japanese item name, item order, cost, quantity, and discount if any.
                 a. If a discount applies, subtract it from the item directly above.
             2. English and Japanese  name of the shop.
             3. Tax percentage if any.
             4. Total cost amount of all items in the receipt.
             5. Datetime of the receipt.
+            
+            The total amount in the receipt will always be correct. Make sure the receipt items you extracted add up to the total amount.
+            It might be possible that the total cost already includes tax.
         """,
     )
 
     result = await agent.run(
         [
             """
-            here is the receipt image below.
+            here are the image receipts:
             """,
             BinaryContent(data=file.read(), media_type="image/jpg"),
         ]

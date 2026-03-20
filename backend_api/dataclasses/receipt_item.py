@@ -1,7 +1,7 @@
 from datetime import datetime
 
-from pydantic import BaseModel, Field, ConfigDict
 from django.utils import timezone
+from pydantic import BaseModel, Field, ConfigDict
 
 
 class ReceiptItemData(BaseModel):
@@ -26,7 +26,9 @@ class ReceiptItemData(BaseModel):
 
 
 class ReceiptData(BaseModel):
-    receipt_items: list[ReceiptItemData]
+    receipt_items: list[ReceiptItemData] = Field(
+        default_factory=list, description="The list of items in the receipt"
+    )
     en_shop_name: str = Field(
         ..., description="The name of the shop in the receipt in english"
     )
@@ -37,7 +39,7 @@ class ReceiptData(BaseModel):
         0, description="The tax percentage in the receipt if applicable"
     )
     total_amount: float = Field(
-        0, description="The total amount of all items in the receipt"
+        0, description="The total amount of all items stated in the receipt"
     )
     receipt_date: datetime = Field(
         default_factory=timezone.now, description="The date of the receipt"
