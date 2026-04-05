@@ -940,6 +940,18 @@ wheels = [
 ]
 
 [[package]]
+name = "googletrans"
+version = "4.0.2"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "httpx", extra = ["http2"] },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/d8/52/18700a3356c9359d2208e21350f52445982ef884898d6c11671f6a829876/googletrans-4.0.2.tar.gz", hash = "sha256:d9ef126b5d92fabeec0bb9ddcdbeecd43865fc00e17f1dfa07717837827a17de", size = 50353 }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/3c/9c/3ec8e2a1f9bf57b8ee3a26c49d0dcbfa21d54d412d2e7d158fac46fa6e67/googletrans-4.0.2-py3-none-any.whl", hash = "sha256:19e4fbbf7463e0cf4cd8f03479372910368730ac13dfb023fed6db58fd093547", size = 18340 },
+]
+
+[[package]]
 name = "griffe"
 version = "1.15.0"
 source = { registry = "https://pypi.org/simple" }
@@ -1107,6 +1119,11 @@ dependencies = [
 sdist = { url = "https://files.pythonhosted.org/packages/b1/df/48c586a5fe32a0f01324ee087459e112ebb7224f646c0b5023f5e79e9956/httpx-0.28.1.tar.gz", hash = "sha256:75e98c5f16b0f35b567856f597f06ff2270a374470a5c2392242528e3e3e42fc", size = 141406 }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/2a/39/e50c7c3a983047577ee07d2a9e53faf5a69493943ec3f6a384bdc792deb2/httpx-0.28.1-py3-none-any.whl", hash = "sha256:d909fcccc110f8c7faf814ca82a9a4d816bc5a6dbfea25d6591d6985b8ba59ad", size = 73517 },
+]
+
+[package.optional-dependencies]
+http2 = [
+    { name = "h2" },
 ]
 
 [[package]]
@@ -2888,6 +2905,7 @@ dependencies = [
     { name = "django-redis" },
     { name = "dotenv" },
     { name = "faststream" },
+    { name = "googletrans" },
     { name = "hypercorn" },
     { name = "psycopg2-binary" },
     { name = "pydantic-ai" },
@@ -2909,6 +2927,7 @@ requires-dist = [
     { name = "django-redis", specifier = ">=6.0.0" },
     { name = "dotenv", specifier = ">=0.9.9" },
     { name = "faststream", specifier = ">=0.6.3" },
+    { name = "googletrans", specifier = ">=4.0.2" },
     { name = "hypercorn", specifier = ">=0.17.3" },
     { name = "psycopg2-binary", specifier = ">=2.9.10" },
     { name = "pydantic-ai", specifier = ">=1.47.0" },
