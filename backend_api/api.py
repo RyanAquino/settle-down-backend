@@ -62,7 +62,7 @@ async def post_ocr_receipt(request, file: File[UploadedFile]):
     result = await agent.run(
         [
             """
-            here are the image receipts:
+            here is the image receipt:
             """,
             BinaryContent(data=file.read(), media_type="image/jpg"),
         ]
@@ -70,10 +70,10 @@ async def post_ocr_receipt(request, file: File[UploadedFile]):
     results = result.output
 
     try:
-        url = catbox_upload_file(file)
+        url = cloudinary_upload_file(file)
     except Exception as e:
         print(f"exception: {str(e)}")
-        url = cloudinary_upload_file(file)
+        url = catbox_upload_file(file)
 
     results.receipt_image_url = url
 
