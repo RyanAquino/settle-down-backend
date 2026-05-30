@@ -13,6 +13,7 @@ https://docs.djangoproject.com/en/5.2/ref/settings/
 import os
 
 from dotenv import load_dotenv
+from pathlib import Path
 
 load_dotenv()
 
@@ -20,8 +21,6 @@ LLM_API_KEY = os.getenv("LLM_API_KEY")
 CLOUDINARY_API_SECRET = os.getenv("CLOUDINARY_API_SECRET")
 CLOUDINARY_API_KEY = os.getenv("CLOUDINARY_API_KEY")
 
-
-from pathlib import Path
 
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
