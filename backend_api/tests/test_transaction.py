@@ -1,141 +1,157 @@
-from django.test import TestCase
-
 from backend_api.serializer import UserTransactionSchema
-from backend_api.settleup_utils import SettleUpClient
 
 
-class TestTransaction(TestCase):
-    def test_single_member_transaction(self):
+class TestTransaction:
+    """
+    Test compute transaction logic.
+
+    Total amount is always presumed as correct value from receipt
+    """
+
+    def test_single_member_transaction(self, settle_up_client):
         """
-        Test single member transaction 10% tax excluded in total.
+        Test a single member transaction 10% tax excluded in total.
         """
-        settle_up_client = SettleUpClient()
         result = settle_up_client._compute_transaction(
             receipt_items=[
                 UserTransactionSchema(
-                    member_id="-O_65sO85eKnYhJ4mfUh",
+                    member_id="Member 1",
                     cost=90,
                 )
             ],
             tax_percentage=10,
             total_amount=99.0,
-            group_id="-O_65sO713JKnTgmQpCt",
+            group_id="Group A",
         )
-        assert result == {"-O_65sO85eKnYhJ4mfUh": 99.0}
+        assert result == {"Member 1": 99.0}
 
-    def test_single_member_with_tax_transaction(self):
+    def test_single_member_with_tax_transaction(self, settle_up_client):
         """
-        Test single member transaction 10% w/ tax included in total.
+        Test a single member transaction 10% w/ tax included in total.
         """
-        settle_up_client = SettleUpClient()
         result = settle_up_client._compute_transaction(
             receipt_items=[
                 UserTransactionSchema(
-                    member_id="-O_65sO85eKnYhJ4mfUh",
+                    member_id="Member 1",
                     cost=100,
                 )
             ],
             tax_percentage=10,
             total_amount=100,
-            group_id="-O_65sO713JKnTgmQpCt",
+            group_id="Group A",
         )
-        assert result == {"-O_65sO85eKnYhJ4mfUh": 100}
+        assert result == {"Member 1": 100}
 
-    def test_single_member_with_splits_with_tax_transaction(self):
+    def test_single_member_with_splits_with_tax_transaction(self, settle_up_client):
         """
-        Test single member transaction with 10% tax and 2 member splits included in total.
+        Test a single member transaction with 10% tax and 2 member splits included in total.
+
+        Scenario:
+            Member 1 - paid an item for 100
+            Another item for 100 which is shared among 2 members
+            total of 200 with 10% tax rate
         """
-        settle_up_client = SettleUpClient()
         result = settle_up_client._compute_transaction(
             receipt_items=[
                 UserTransactionSchema(
-                    member_id="-O_65sO85eKnYhJ4mfUh",
+                    member_id="Member 1",
                     cost=100,
                 )
             ],
             tax_percentage=10,
             total_amount=200,
-            split_receipt_items=[100],  # 50 per member + 5 (10% tax) = 55
-            group_id="-O_65sO713JKnTgmQpCt",  # 2 member group
+            split_receipt_items=[100],  # 50 per member + 5(10% tax) = 55
+            group_id="Group A",  # 2 member group
         )
-        assert result == {"-O_65sO85eKnYhJ4mfUh": 150.0, "-O_65vk76uxDTYDTHDku": 50.0}
+        assert result == {"Member 1": 150.0, "Member 2": 50.0}
 
-    def test_single_member_with_splits_without_tax_transaction(self):
+    def test_single_member_with_splits_without_tax_transaction(self, settle_up_client):
         """
         Test single member transaction with 10% tax excluded in total and 2 member splits.
+
+        Scenario:
+            Member 1 paid an item for 90
+            Another item for 90 which is shared among 2 members
+            Total of 198 with 10% tax rate
+            Receipt items does not include tax yet
         """
-        settle_up_client = SettleUpClient()
         result = settle_up_client._compute_transaction(
             receipt_items=[
                 UserTransactionSchema(
-                    member_id="-O_65sO85eKnYhJ4mfUh",
+                    member_id="Member 1",
                     cost=90,
                 )
             ],
             tax_percentage=10,
             total_amount=198,
             split_receipt_items=[90],
-            group_id="-O_65sO713JKnTgmQpCt",  # 2 member group
+            group_id="Group A",  # 2 member group
         )
-        assert result == {"-O_65sO85eKnYhJ4mfUh": 148, "-O_65vk76uxDTYDTHDku": 49}
+        assert result == {"Member 1": 148.5, "Member 2": 49.5}
 
-    def test_two_member_with_tax_transaction_without_split(self):
-        settle_up_client = SettleUpClient()
+    def test_two_member_with_tax_transaction_without_split(self, settle_up_client):
+        """
+        Test two member transaction with 10% tax included in total.
+        """
         result = settle_up_client._compute_transaction(
             receipt_items=[
                 UserTransactionSchema(
-                    member_id="-O_65sO85eKnYhJ4mfUh",
+                    member_id="Member 1",
                     cost=100,
                 ),
                 UserTransactionSchema(
-                    member_id="-O_65vk76uxDTYDTHDku",
+                    member_id="Member 2",
                     cost=100,
                 ),
             ],
             tax_percentage=10,
             total_amount=200,
-            group_id="-O_65sO713JKnTgmQpCt",  # 2 member group
+            group_id="Group A",  # 2 member group
         )
-        assert result == {"-O_65sO85eKnYhJ4mfUh": 100.0, "-O_65vk76uxDTYDTHDku": 100.0}
+        assert result == {"Member 1": 100.0, "Member 2": 100.0}
 
-    def test_two_member_without_tax_transaction_without_split(self):
-        settle_up_client = SettleUpClient()
+    def test_two_member_without_tax_transaction_without_split(self, settle_up_client):
+        """
+        Test two member transaction with 10% tax excluded in total.
+        """
         result = settle_up_client._compute_transaction(
             receipt_items=[
                 UserTransactionSchema(
-                    member_id="-O_65sO85eKnYhJ4mfUh",
+                    member_id="Member 1",
                     cost=90,
                 ),
                 UserTransactionSchema(
-                    member_id="-O_65vk76uxDTYDTHDku",
+                    member_id="Member 2",
                     cost=90,
                 ),
             ],
             tax_percentage=10,
             total_amount=198,
-            group_id="-O_65sO713JKnTgmQpCt",
+            group_id="Group A",
         )
-        assert result == {"-O_65sO85eKnYhJ4mfUh": 99.0, "-O_65vk76uxDTYDTHDku": 99.0}
+        assert result == {"Member 1": 99.0, "Member 2": 99.0}
 
-    def test_two_member_without_tax_transaction_with_split(self):
-        settle_up_client = SettleUpClient()
+    def test_two_member_without_tax_transaction_with_split(self, settle_up_client):
+        """
+        Test two member transaction with 10% tax excluded in total and 2 member splits.
+        """
         result = settle_up_client._compute_transaction(
             receipt_items=[
                 UserTransactionSchema(
-                    member_id="-O_65sO85eKnYhJ4mfUh",
+                    member_id="Member 1",
                     cost=90,
                 ),
                 UserTransactionSchema(
-                    member_id="-O_65vk76uxDTYDTHDku",
+                    member_id="Member 2",
                     cost=90,
                 ),
             ],
             tax_percentage=10,
             total_amount=297,
             split_receipt_items=[90],
-            group_id="-O_65sO713JKnTgmQpCt",
+            group_id="Group A",
         )
-        assert result == {"-O_65sO85eKnYhJ4mfUh": 148, "-O_65vk76uxDTYDTHDku": 148}
+        assert result == {"Member 1": 148.5, "Member 2": 148.5}
 
     # def test_temp(self):
     #     settle_up_client = SettleUpClient()

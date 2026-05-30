@@ -161,9 +161,8 @@ class SettleUpClient:
                 member_receipt_item_total_map[member_id] += portion_amt
 
                 if should_compute_tax:
-                    member_receipt_item_total_map[member_id] += int(
-                        (portion_amt * tax_percentage)
-                    )
+                    member_receipt_item_total_map[member_id] += portion_amt * tax_percentage
+
 
         return member_receipt_item_total_map
 
