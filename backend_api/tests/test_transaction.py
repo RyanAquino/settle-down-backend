@@ -153,6 +153,24 @@ class TestTransaction:
         )
         assert result == {"Member 1": 148.5, "Member 2": 148.5}
 
+    def test_fractional_tax_balances_to_total(self, settle_up_client):
+        """
+        Test fractional tax is applied exactly and member shares sum to the total.
+
+        Scenario:
+            Member 1 - paid an item for 95
+            Another item for 85 which is shared among 2 members
+            total of 198 with 10% tax rate
+        """
+        result = settle_up_client._compute_transaction(
+            receipt_items=[UserTransactionSchema(member_id="Member 1", cost=95)],
+            tax_percentage=10,
+            total_amount=198,
+            split_receipt_items=[85],
+            group_id="Group A",
+        )
+        assert result == {"Member 1": 151.25, "Member 2": 46.75}
+
     # def test_temp(self):
     #     settle_up_client = SettleUpClient()
     #
