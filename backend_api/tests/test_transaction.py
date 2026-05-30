@@ -1,4 +1,4 @@
-from backend_api.serializer import UserTransactionSchema
+from backend_api.schemas import UserTransactionSchema
 
 
 class TestTransaction:
@@ -170,3 +170,9 @@ class TestTransaction:
             group_id="Group A",
         )
         assert result == {"Member 1": 151.25, "Member 2": 46.75}
+
+    def test_compute_weights_reduces_to_smallest_integer_ratio(self, settle_up_client):
+        """_compute_weights divides scaled shares by their GCD."""
+        assert settle_up_client._compute_weights((150.0, 50.0)) == [3, 1]
+        assert settle_up_client._compute_weights((100.0, 100.0)) == [1, 1]
+        assert settle_up_client._compute_weights((36, 64)) == [9, 16]

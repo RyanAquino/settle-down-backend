@@ -26,7 +26,7 @@ def catbox_upload_file(file_obj: UploadedFile):
 def cloudinary_upload_file(file_obj: UploadedFile):
     file_obj.seek(0)
     cloudinary.config(
-        cloud_name="dpbqobzo9",
+        cloud_name=settings.CLOUDINARY_CLOUD_NAME,
         api_key=settings.CLOUDINARY_API_KEY,
         api_secret=settings.CLOUDINARY_API_SECRET,
         secure=True,

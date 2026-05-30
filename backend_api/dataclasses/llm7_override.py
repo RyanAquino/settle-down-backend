@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import datetime, timezone
 
 from openai.types import chat
 from pydantic import ValidationError
@@ -20,7 +20,7 @@ class LLM7ChatModel(OpenAIChatModel):
 
         # Fallback: if created is missing
         if not response.created:
-            response.created = int(datetime.utcnow().timestamp())
+            response.created = int(datetime.now(timezone.utc).timestamp())
 
         try:
             response = chat.ChatCompletion.model_validate(response.model_dump())

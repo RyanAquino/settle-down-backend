@@ -1,7 +1,7 @@
 from ninja import Router
 from ninja.pagination import paginate
 
-from backend_api.serializer import (
+from backend_api.schemas import (
     SettleUpGroupSchema,
     TransactionPostIn,
     SettleUpUserSchema,
