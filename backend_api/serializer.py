@@ -1,9 +1,10 @@
 from datetime import datetime
 
+from django.contrib.auth.models import User
 from django.utils import timezone
 from ninja import Schema
 from ninja.errors import HttpError
-from pydantic import Field, model_validator
+from pydantic import Field
 from pydantic import field_validator
 
 from backend_api.dataclasses.receipt_item import ReceiptItemData

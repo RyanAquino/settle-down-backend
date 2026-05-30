@@ -1,0 +1,40 @@
+name: CI
+
+# Run on every pull request push, and on pushes/merges to main.
+on:
+  pull_request:
+  push:
+    branches: [ main ]
+
+# Cancel in-progress runs for the same ref when a new run is queued (e.g. new PR pushes).
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  # Lint with ruff and verify formatting with black (check mode — no files modified).
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+        with:
+          enable-cache: true
+          python-version: "3.12"
+      - run: uv sync --locked
+      - name: Lint (ruff) and format check (black)
+        run: |
+          uv run ruff check .
+          uv run black --check .
+
+  # Run the pytest suite. DJANGO_SETTINGS_MODULE is already configured in pyproject.toml.
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+        with:
+          enable-cache: true
+          python-version: "3.12"
+      - run: uv sync --locked
+      - run: uv run pytest

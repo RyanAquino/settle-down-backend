@@ -119,7 +119,7 @@ class SettleUpClient:
 
         # Calculate tax
         member_receipt_item_total_map = defaultdict(float)
-        member_receipt_tax_map = defaultdict(int)
+        member_receipt_tax_map = defaultdict(float)
         tax_percentage /= 100
 
         # Total cost per member
@@ -128,14 +128,14 @@ class SettleUpClient:
 
         # Tax per consolidated items member
         for member_id, item_amt in member_receipt_item_total_map.items():
-            member_receipt_tax_map[member_id] += int(item_amt * tax_percentage)
+            member_receipt_tax_map[member_id] += round(item_amt * tax_percentage, 2)
 
         # Shared tax for total verification
         shared_tax = 0
         member_users = self.get_group_members_by_group(group_id)
         if split_receipt_items:
             for total_amt in split_receipt_items:
-                shared_tax += total_amt + int(total_amt * tax_percentage)
+                shared_tax += total_amt + round(total_amt * tax_percentage, 2)
 
         should_compute_tax = (
             sum(
@@ -161,8 +161,8 @@ class SettleUpClient:
                 member_receipt_item_total_map[member_id] += portion_amt
 
                 if should_compute_tax:
-                    member_receipt_item_total_map[member_id] += int(
-                        (portion_amt * tax_percentage)
+                    member_receipt_item_total_map[member_id] += round(
+                        portion_amt * tax_percentage, 2
                     )
 
         return member_receipt_item_total_map
