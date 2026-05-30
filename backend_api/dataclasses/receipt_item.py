@@ -1,7 +1,7 @@
 from datetime import datetime
 
 from django.utils import timezone
-from pydantic import BaseModel, Field, ConfigDict
+from pydantic import BaseModel, Field
 
 
 class ReceiptItemData(BaseModel):
@@ -17,11 +17,12 @@ class ReceiptItemData(BaseModel):
     )
     item_order: int = Field(description="The order of the items in the receipt")
     cost: float = Field(
-        description="The cost of the purchased item minus any discounts if applicable"
+        description="The final line price for this item after any discount, for the quantity shown"
     )
     quantity: int = Field(description="The quantity of the purchased item")
     discount: int = Field(
-        0, description="The discounted value of the purchased item if any is provided"
+        0,
+        description="The discount amount applied to this line, in yen (0 if none). Already subtracted from cost",
     )
 
 
@@ -44,5 +45,3 @@ class ReceiptData(BaseModel):
     receipt_date: datetime = Field(
         default_factory=timezone.now, description="The date of the receipt"
     )
-
-    model_config = ConfigDict(extra="allow")

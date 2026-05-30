@@ -7,7 +7,7 @@ from django.conf import settings
 from django.core.cache import cache
 
 from backend_api.dataclasses.settleup import SettleUpGroup
-from backend_api.money import compute_member_totals, compute_weights
+from backend_api.utils import compute_member_totals, compute_weights
 from backend_api.schemas import TransactionPostIn, UserTransactionSchema
 
 

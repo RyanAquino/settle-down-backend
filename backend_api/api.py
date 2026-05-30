@@ -32,6 +32,4 @@ async def post_ocr_receipt(request, file: File[UploadedFile]):
         logger.warning("Cloudinary upload failed; falling back to catbox: %s", e)
         url = catbox_upload_file(file)
 
-    results.receipt_image_url = url
-
-    return results
+    return OCRReceiptPostOut(**results.model_dump(), receipt_image_url=url)

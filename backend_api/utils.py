@@ -1,7 +1,10 @@
-"""Pure, IO-free money math for settling receipts.
+"""General utility helpers for backend_api.
 
-Extracted from SettleUpClient so the financial logic can be unit-tested in
-isolation. No Firebase, Redis, or HTTP here — callers pass `members` in as data.
+Currently holds the receipt-splitting math (``compute_member_totals``,
+``compute_weights``) extracted from ``SettleUpClient`` so it can be unit-tested
+in isolation — these are pure, callers pass ``members`` in as data. May grow to
+include other shared helpers (including I/O-touching ones); keep those distinct
+from ``settleup_utils.SettleUpClient`` so this module stays cohesive.
 """
 
 import math
