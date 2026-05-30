@@ -1,0 +1,40 @@
+# Keep the build context small, the image clean, and secrets out of layers.
+
+# Virtualenvs (the image builds its own under /app/.venv)
+.venv/
+venv/
+
+# Secrets & local env
+.env
+.env.*
+*.pem
+
+# VCS
+.git/
+.gitignore
+
+# Python caches / build artifacts
+__pycache__/
+*.py[cod]
+*.egg-info/
+.ruff_cache/
+.mypy_cache/
+.pytest_cache/
+
+# Local databases & media
+db.sqlite3
+media/
+
+# Editor / tooling / agent dirs
+.idea/
+.vscode/
+.claude/
+
+# Docker / compose (not needed inside the image)
+Dockerfile
+.dockerignore
+docker-compose.yml
+
+# Misc
+*.log
+.DS_Store

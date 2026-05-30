@@ -12,7 +12,7 @@ def catbox_upload_file(file_obj: UploadedFile):
     Args:
         file_obj: UploadedFile
 
-    Returns:
+    Returns
     """
     file_obj.seek(0)
     response = requests.post(

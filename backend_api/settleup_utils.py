@@ -1,11 +1,11 @@
 import math
 import time
+from collections import defaultdict
 from datetime import timezone
 from functools import reduce
 
 import pyrebase
 import requests
-from black.trans import defaultdict
 from django.conf import settings
 from django.core.cache import cache
 

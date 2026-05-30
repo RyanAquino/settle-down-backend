@@ -660,24 +660,6 @@ lua = [
 ]
 
 [[package]]
-name = "fast-depends"
-version = "3.0.3"
-source = { registry = "https://pypi.org/simple" }
-dependencies = [
-    { name = "anyio" },
-    { name = "typing-extensions" },
-]
-sdist = { url = "https://files.pythonhosted.org/packages/9a/a3/e7c234b84c407e4450e3fb930059aca7e786177a8af9954118104cf8ba24/fast_depends-3.0.3.tar.gz", hash = "sha256:fa63413beafc41b9cdd1e3efa7b9231c71d0c9d1c5c19cdc007a3b3c39f83f6e", size = 18172 }
-wheels = [
-    { url = "https://files.pythonhosted.org/packages/54/64/935128fefc9a4ffd5e160eec6e6ae6d85956f98e4f452fc57bfe337def92/fast_depends-3.0.3-py3-none-any.whl", hash = "sha256:15f7bb88cbfd541ef185667f73895c5aa32e5803d61b905b3405a43f7da914e8", size = 25292 },
-]
-
-[package.optional-dependencies]
-pydantic = [
-    { name = "pydantic" },
-]
-
-[[package]]
 name = "fastavro"
 version = "1.12.1"
 source = { registry = "https://pypi.org/simple" }
@@ -739,20 +721,6 @@ dependencies = [
 sdist = { url = "https://files.pythonhosted.org/packages/fd/a9/a57d5e5629ebd4ef82b495a7f8e346ce29ef80cc86b15c8c40570701b94d/fastmcp-2.14.4.tar.gz", hash = "sha256:c01f19845c2adda0a70d59525c9193be64a6383014c8d40ce63345ac664053ff", size = 8302239 }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/3e/41/c4d407e2218fd60d84acb6cc5131d28ff876afecf325e3fd9d27b8318581/fastmcp-2.14.4-py3-none-any.whl", hash = "sha256:5858cff5e4c8ea8107f9bca2609d71d6256e0fce74495912f6e51625e466c49a", size = 417788 },
-]
-
-[[package]]
-name = "faststream"
-version = "0.6.3"
-source = { registry = "https://pypi.org/simple" }
-dependencies = [
-    { name = "anyio" },
-    { name = "fast-depends", extra = ["pydantic"] },
-    { name = "typing-extensions" },
-]
-sdist = { url = "https://files.pythonhosted.org/packages/4e/d1/ce3d0354be79d8e18fafd2c6cfd32b75521bd4d45ac79be386f1967c7155/faststream-0.6.3.tar.gz", hash = "sha256:f94d9790d61fe02fe9a274ce6dc030a59b4aa662ca8eda1c8505676fa3f79125", size = 299146 }
-wheels = [
-    { url = "https://files.pythonhosted.org/packages/d0/b9/1e18ac5ae26ccf6a9fc726a98e7cf9b917565671f1e721bdcbf8c8550422/faststream-0.6.3-py3-none-any.whl", hash = "sha256:77abe68377210b3f728285ae035682a49178feff3c7b5733731eebe9e2efa710", size = 503396 },
 ]
 
 [[package]]
@@ -2898,13 +2866,11 @@ name = "settledown"
 version = "0.1.0"
 source = { virtual = "." }
 dependencies = [
-    { name = "black" },
     { name = "cloudinary" },
     { name = "django-cors-headers" },
     { name = "django-ninja" },
     { name = "django-redis" },
     { name = "dotenv" },
-    { name = "faststream" },
     { name = "googletrans" },
     { name = "hypercorn" },
     { name = "psycopg2-binary" },
@@ -2915,18 +2881,17 @@ dependencies = [
 
 [package.dev-dependencies]
 dev = [
+    { name = "black" },
     { name = "ruff" },
 ]
 
 [package.metadata]
 requires-dist = [
-    { name = "black", specifier = "==24.8.0" },
     { name = "cloudinary", specifier = ">=1.44.1" },
     { name = "django-cors-headers", specifier = ">=4.8.0" },
     { name = "django-ninja", specifier = ">=1.4.3" },
     { name = "django-redis", specifier = ">=6.0.0" },
     { name = "dotenv", specifier = ">=0.9.9" },
-    { name = "faststream", specifier = ">=0.6.3" },
     { name = "googletrans", specifier = ">=4.0.2" },
     { name = "hypercorn", specifier = ">=0.17.3" },
     { name = "psycopg2-binary", specifier = ">=2.9.10" },
@@ -2936,7 +2901,10 @@ requires-dist = [
 ]
 
 [package.metadata.requires-dev]
-dev = [{ name = "ruff", specifier = ">=0.13.1" }]
+dev = [
+    { name = "black", specifier = "==24.8.0" },
+    { name = "ruff", specifier = ">=0.13.1" },
+]
 
 [[package]]
 name = "setuptools"

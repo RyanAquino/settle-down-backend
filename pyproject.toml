@@ -4,13 +4,11 @@ version = "0.1.0"
 description = "Add your description here"
 requires-python = ">=3.12"
 dependencies = [
-    "black==24.8.0",
     "cloudinary>=1.44.1",
     "django-cors-headers>=4.8.0",
     "django-ninja>=1.4.3",
     "django-redis>=6.0.0",
     "dotenv>=0.9.9",
-    "faststream>=0.6.3",
     "googletrans>=4.0.2",
     "hypercorn>=0.17.3",
     "psycopg2-binary>=2.9.10",
@@ -21,5 +19,6 @@ dependencies = [
 
 [dependency-groups]
 dev = [
+    "black==24.8.0",
     "ruff>=0.13.1",
 ]

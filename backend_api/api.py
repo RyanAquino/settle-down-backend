@@ -19,7 +19,6 @@ async def post_ocr_receipt(request, file: File[UploadedFile]):
         # base_url="https://api.llm7.io/v1",
         api_key=settings.LLM_API_KEY,
     )
-    # "gpt-5-nano-2025-08-07"
     model = LLM7ChatModel(
         "gpt-5-mini", provider=OpenAIProvider(openai_client=client)
     )
