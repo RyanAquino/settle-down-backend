@@ -1,0 +1,21 @@
+# Local hooks intentionally shell out to `uv run` so black/ruff come from the
+# uv dev group — same versions as CI and pyproject.toml, no drift between files.
+# These mirror the CI lint job (uv run ruff check . / uv run black --check .):
+# check-only, whole repo. Install once per clone with `uv run pre-commit install`.
+repos:
+  - repo: local
+    hooks:
+      - id: black
+        name: black (check)
+        entry: uv run black --check .
+        language: system
+        types: [python]
+        pass_filenames: false
+        require_serial: true
+      - id: ruff
+        name: ruff (check)
+        entry: uv run ruff check .
+        language: system
+        types: [python]
+        pass_filenames: false
+        require_serial: true

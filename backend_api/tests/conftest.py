@@ -31,9 +31,11 @@ def mock_settleup():
     Yields the mocks so individual tests can tailor responses (for example a
     different member set) before exercising the client.
     """
-    with patch("backend_api.settleup_utils.pyrebase") as mock_pyrebase, patch(
-        "backend_api.settleup_utils.requests"
-    ) as mock_requests, patch("backend_api.settleup_utils.cache") as mock_cache:
+    with (
+        patch("backend_api.settleup_utils.pyrebase") as mock_pyrebase,
+        patch("backend_api.settleup_utils.requests") as mock_requests,
+        patch("backend_api.settleup_utils.cache") as mock_cache,
+    ):
         # Force a cache miss so the (mocked) login and REST paths actually run.
         mock_cache.get.return_value = None
 

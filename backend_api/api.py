@@ -19,9 +19,7 @@ async def post_ocr_receipt(request, file: File[UploadedFile]):
         # base_url="https://api.llm7.io/v1",
         api_key=settings.LLM_API_KEY,
     )
-    model = LLM7ChatModel(
-        "gpt-5-mini", provider=OpenAIProvider(openai_client=client)
-    )
+    model = LLM7ChatModel("gpt-5-mini", provider=OpenAIProvider(openai_client=client))
     agent = Agent(
         model=model,
         # output_type=PromptedOutput(ReceiptData),
@@ -51,12 +49,13 @@ async def post_ocr_receipt(request, file: File[UploadedFile]):
 
         translator = Translator()
         try:
-            text_result = await translator.translate(text, dest='en')
+            text_result = await translator.translate(text, dest="en")
         except Exception:
-            raise ModelRetry("Translation failed, please try with a shorter chunk of text.")
+            raise ModelRetry(
+                "Translation failed, please try with a shorter chunk of text."
+            )
 
         return text_result.text
-
 
     result = await agent.run(
         [
