@@ -20,6 +20,7 @@ dependencies = [
 [dependency-groups]
 dev = [
     "black==24.8.0",
+    "debugpy>=1.8.21",
     "pre-commit>=4.6.0",
     "pytest>=9.0.3",
     "pytest-cov>=7.1.0",
@@ -30,3 +31,6 @@ dev = [
 [tool.pytest.ini_options]
 DJANGO_SETTINGS_MODULE = "settledown.settings"
 python_files = ["test_*.py"]
+markers = [
+    "live: hits real external APIs (network + credits); skipped unless keys/fixtures are present",
+]
