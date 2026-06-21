@@ -33,7 +33,7 @@ uv run ruff check .                           # lint
 
 Request entry is `settledown/api.py`: one `NinjaAPI` protected by `GlobalAuth` (a `HttpBearer` that just compares the token to `settings.APP_AUTH`). It mounts two routers under `/api/`:
 
-- `/api/v1/receipts/receipt-items/` (`backend_api/api.py`) — **the OCR flow**. An async `pydantic-ai` `Agent` running `gpt-5-mini` reads an uploaded image with `output_type=ReceiptData`, so the LLM is forced to return a validated `ReceiptData` (items, EN/JP shop names, tax %, total, date) rather than free text. It has one tool, `translate_jp_to_en_text` (Google Translate). The original image is uploaded to Cloudinary, falling back to catbox.moe on any exception (`backend_api/services.py`). The model is wrapped by `backend_api/dataclasses/llm7_override.py` (`LLM7ChatModel`), a parsing workaround — don't delete it as dead code.
+- `/api/v1/receipts/receipt-items/` (`backend_api/api.py`) — **the OCR flow**. An async `pydantic-ai` `Agent` running `gpt-5-mini` reads an uploaded image with `output_type=ReceiptData`, so the LLM is forced to return a validated `ReceiptData` (items, EN/JP shop names, tax %, total, date) rather than free text. It has one tool, `translate_jp_to_en_text` (Google Translate). The original image is uploaded to Cloudinary, falling back to catbox.moe on any exception (`backend_api/services.py`). The model is wrapped by `backend_api/dto/llm7_override.py` (`LLM7ChatModel`), a parsing workaround — don't delete it as dead code.
 - `/api/v1/settle-up/...` (`backend_api/settleup_api.py`) — list groups, list members, and create a transaction. All delegate to `SettleUpClient`.
 
 Swagger UI is at `/api/docs/` (authorize with the `APP_AUTH` bearer token).

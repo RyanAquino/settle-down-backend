@@ -53,7 +53,7 @@ settledown exposes a [Django Ninja](https://django-ninja.dev/) API under the `/a
 ### Flow 1 — OCR Receipt Processing
 
 1. The client uploads a receipt image to `POST /api/v1/receipts/receipt-items/`.
-2. The endpoint initializes a Pydantic AI agent backed by the OpenAI provider (GPT-5-mini).
+2. The endpoint initializes a Pydantic AI agent backed by the OpenRouter provider (default `google/gemini-2.5-flash-lite`, via `get_openrouter_receipt_agent`). An alternate OpenAI/LLM7 factory (`get_receipt_agent`) remains available.
 3. The agent receives a system prompt (extract items, bilingual shop names, tax %, total) plus the image.
 4. The agent calls a `translate_jp_to_en_text` tool as needed (the system prompt instructs it to always translate the text to English before processing, so the tool may be invoked unconditionally).
 5. The LLM validates that the extracted items sum to the declared total (all-or-nothing check).
@@ -78,7 +78,7 @@ settledown exposes a [Django Ninja](https://django-ninja.dev/) API under the `/a
 | Django 5.2 | Web framework; Ninja router for async REST endpoints |
 | Django Ninja | Async REST framework with schema validation |
 | Pydantic | Data validation and serialization for OCR output and API schemas |
-| Pydantic AI | Agent framework wrapping the OpenAI provider for structured LLM output |
+| Pydantic AI | Agent framework wrapping OpenAI-compatible providers (OpenRouter, OpenAI/LLM7) for structured LLM output |
 | Pyrebase | Firebase Realtime Database client for the Settle Up API |
 | django-redis | Redis cache backend for tokens and metadata |
 | requests | HTTP client for the Settle Up REST API and image uploads |
@@ -120,7 +120,9 @@ All variables are optional and default to an empty value unless noted otherwise.
 
 | Variable | Required | Description | Default |
 | --- | --- | --- | --- |
-| `LLM_API_KEY` | No | API key for the LLM service used in the application | _(empty)_ |
+| `LLM_API_KEY` | No | API key for the OpenAI/LLM7 OCR provider (`get_receipt_agent`) | _(empty)_ |
+| `OPENROUTER_API_KEY` | No | API key for the OpenRouter OCR provider (`get_openrouter_receipt_agent`); the OCR endpoint uses this by default | _(empty)_ |
+| `OPENROUTER_MODEL` | No | Model id sent to OpenRouter for the OCR flow | `google/gemini-2.5-flash-lite` |
 | `CLOUDINARY_API_SECRET` | No | Cloudinary API secret for image management | _(empty)_ |
 | `CLOUDINARY_API_KEY` | No | Cloudinary API key for image management | _(empty)_ |
 | `SETTLE_UP_API_KEY` | No | API key for Settle Up Firebase authentication | _(empty)_ |
@@ -395,7 +397,7 @@ settledown/
     ├── settleup_utils.py       # SettleUpClient: Firebase auth, transaction build
     ├── serializer.py           # Request/response schemas
     ├── services.py             # Cloudinary + catbox.moe image upload
-    ├── dataclasses/            # Data structures
+    ├── dto/                    # Data structures
     │   ├── receipt_item.py     # ReceiptData and related OCR structures
     │   ├── settleup.py         # Settle Up data structures
     │   └── llm7_override.py    # LLM7ChatModel — LLM response parsing workaround

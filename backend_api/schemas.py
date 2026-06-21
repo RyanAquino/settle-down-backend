@@ -4,7 +4,7 @@ from django.utils import timezone
 from ninja import Schema
 from pydantic import Field
 
-from backend_api.dataclasses.receipt_item import ReceiptItemData
+from backend_api.dto.receipt_item import ReceiptItemData
 
 
 class SettleUpGroupSchema(Schema):
