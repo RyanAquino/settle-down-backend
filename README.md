@@ -420,3 +420,7 @@ settledown/
 - **Shared items are split evenly** across all members; there are no per-member overrides.
 - **A receipt image is required for a transaction** (the URL field is optional, but the OCR flow always provides it).
 - **LLM errors raise `ModelRetry`;** translation failures retry with shorter text chunks.
+
+---
+
+deploy v1
