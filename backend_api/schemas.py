@@ -43,16 +43,19 @@ class TransactionPostIn(Schema):
 class OCRReceiptPostOut(Schema):
     receipt_items: list[ReceiptItemData]
     en_shop_name: str = Field(
-        ..., description="The name of the shop in the receipt in english"
+        ..., description="The name of the shop translated to English"
     )
     jp_shop_name: str = Field(
-        ..., description="The name of the shop in the receipt in japanese"
+        ...,
+        description="The name of the shop as printed on the receipt, in its original language (Japanese, Chinese, or English)",
     )
     tax_percentage: float = Field(
-        0, description="The tax percentage of the receipt if applicable"
+        0,
+        description="Tax percentage added on top of item costs (0 when the total already includes tax)",
     )
     total_amount: float = Field(
-        0, description="The total amount of all items in the receipt"
+        0,
+        description="The grand total exactly as printed on the receipt (items plus tax when tax_percentage > 0)",
     )
     receipt_date: datetime = Field(
         default_factory=timezone.now, description="The date of the receipt"

@@ -33,7 +33,7 @@ uv run ruff check .                           # lint
 
 Request entry is `settledown/api.py`: one `NinjaAPI` protected by `GlobalAuth` (a `HttpBearer` that just compares the token to `settings.APP_AUTH`). It mounts two routers under `/api/`:
 
-- `/api/v1/receipts/receipt-items/` (`backend_api/api.py`) — **the OCR flow**. An async `pydantic-ai` `Agent` running `gpt-5-mini` reads an uploaded image with `output_type=ReceiptData`, so the LLM is forced to return a validated `ReceiptData` (items, EN/JP shop names, tax %, total, date) rather than free text. It has one tool, `translate_jp_to_en_text` (Google Translate). The original image is uploaded to Cloudinary, falling back to catbox.moe on any exception (`backend_api/services.py`). The model is wrapped by `backend_api/dto/llm7_override.py` (`LLM7ChatModel`), a parsing workaround — don't delete it as dead code.
+- `/api/v1/receipts/receipt-items/` (`backend_api/api.py`) — **the OCR flow**. An async `pydantic-ai` `Agent` (built by `get_openrouter_receipt_agent`, model from `OPENROUTER_MODEL`) reads an uploaded image with `output_type=ReceiptData`, so the LLM is forced to return a validated `ReceiptData` (items, shop name in English + original language, tax %, total, date) rather than free text. The prompt is region-aware for Japan, Taiwan, and Hong Kong receipts; the `japanese_name`/`jp_shop_name` fields predate that and hold the original printed text whatever the language (kept for API compatibility). It has one tool, `translate_to_en_text` (Google Translate). The original image is uploaded to Cloudinary, falling back to catbox.moe on any exception (`backend_api/services.py`). The legacy `get_receipt_agent` path (`gpt-5-mini`) wraps the model with `backend_api/dto/llm7_override.py` (`LLM7ChatModel`), a parsing workaround — don't delete it as dead code.
 - `/api/v1/settle-up/...` (`backend_api/settleup_api.py`) — list groups, list members, and create a transaction. All delegate to `SettleUpClient`.
 
 Swagger UI is at `/api/docs/` (authorize with the `APP_AUTH` bearer token).
@@ -49,9 +49,10 @@ The money logic is two methods worth understanding before touching anything fina
 
 ### Constraints baked into the current model (don't assume otherwise)
 
-- Tax is a single scalar applied **all-or-nothing** — mixed rates (e.g. JP 8% food vs 10%) are not representable.
+- Tax is a single scalar applied **all-or-nothing** — mixed rates (e.g. JP 8% food vs 10%) are not representable. The OCR prompt therefore prefers tax-inclusive line costs with `tax_percentage=0` whenever the printed items already sum to the total, and only emits a non-zero rate when the receipt genuinely adds tax between subtotal and total.
 - `total_amount` is **trusted input**, never validated; the OCR prompt merely asks the LLM to make items sum to it.
 - The float-`==` tax heuristic means a 1-yen rounding drift can silently flip the entire tax decision. Be careful changing any rounding or the comparison.
+- OCR reads JP/TW/HK receipts, but **`create_transaction` files every expense as `JPY`** — there is no currency field anywhere in the pipeline, so TWD/HKD totals are recorded as yen-denominated numbers. Threading currency through (OCR output → `TransactionPostIn` → `currencyCode`/`exchangeRates`) is a known follow-up.
 
 ## Gotchas
 

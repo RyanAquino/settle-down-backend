@@ -32,4 +32,8 @@ async def post_ocr_receipt(request, file: File[UploadedFile]):
         logger.warning("Cloudinary upload failed; falling back to catbox: %s", e)
         url = catbox_upload_file(file)
 
-    return OCRReceiptPostOut(**results.model_dump(), receipt_image_url=url)
+    # receipt_date is None for undated receipts; dropping it lets
+    # OCRReceiptPostOut's default_factory fill in the current time.
+    return OCRReceiptPostOut(
+        **results.model_dump(exclude_none=True), receipt_image_url=url
+    )

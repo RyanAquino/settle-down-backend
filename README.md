@@ -2,7 +2,7 @@
 
 > Receipt-splitting backend that extracts expenses from photo receipts via OCR and files them into Settle Up groups with tax-aware cost apportionment.
 
-settledown is a Django REST API that turns a photo of a receipt into a settled group expense. It processes receipt images, extracts itemized costs via multimodal LLM analysis (with Japanese-to-English translation), and automatically creates transaction records in [Settle Up](https://settleup.io/). It handles group-based expense splitting with support for shared items, per-person itemization, and all-or-nothing tax computation, caching Settle Up group and member data in Redis to minimize Firebase API calls.
+settledown is a Django REST API that turns a photo of a receipt into a settled group expense. It processes receipt images from Japan, Taiwan, and Hong Kong, extracts itemized costs via multimodal LLM analysis (with translation of Japanese/Chinese text to English), and automatically creates transaction records in [Settle Up](https://settleup.io/). Note that transaction creation currently files every expense in JPY (the currency is hardcoded, with no currency field in the OCR output or transaction API) — the amounts of a Taiwan or Hong Kong receipt are extracted correctly but recorded under JPY until currency support is threaded through. It handles group-based expense splitting with support for shared items, per-person itemization, and all-or-nothing tax computation, caching Settle Up group and member data in Redis to minimize Firebase API calls.
 
 ## License
 
@@ -10,7 +10,7 @@ This project does not currently include a LICENSE file. As such, it is **UNLICEN
 
 ## Features
 
-- OCR receipt image processing with bilingual (Japanese/English) text extraction
+- OCR receipt image processing for Japan, Taiwan, and Hong Kong receipts (Japanese / Traditional Chinese / English), preserving the original text alongside an English translation
 - AI-powered line-item parsing with quantity and discount handling
 - Two-tier expense allocation: per-member itemization plus shared item splitting
 - Tax computation with floating-point equality verification against the declared total
@@ -53,9 +53,9 @@ settledown exposes a [Django Ninja](https://django-ninja.dev/) API under the `/a
 ### Flow 1 — OCR Receipt Processing
 
 1. The client uploads a receipt image to `POST /api/v1/receipts/receipt-items/`.
-2. The endpoint initializes a Pydantic AI agent backed by the OpenRouter provider (default `google/gemini-2.5-flash-lite`, via `get_openrouter_receipt_agent`). An alternate OpenAI/LLM7 factory (`get_receipt_agent`) remains available.
-3. The agent receives a system prompt (extract items, bilingual shop names, tax %, total) plus the image.
-4. The agent calls a `translate_jp_to_en_text` tool as needed (the system prompt instructs it to always translate the text to English before processing, so the tool may be invoked unconditionally).
+2. The endpoint initializes a Pydantic AI agent backed by the OpenRouter provider (default `google/gemini-3-flash-preview`, via `get_openrouter_receipt_agent`). An alternate OpenAI/LLM7 factory (`get_receipt_agent`) remains available.
+3. The agent receives a region-aware system prompt (Japan / Taiwan / Hong Kong receipt conventions: items, original + English names, tax handling, date-calendar conversion, totals) plus the image.
+4. The agent calls a `translate_to_en_text` tool when the receipt prints no English version of a name.
 5. The LLM validates that the extracted items sum to the declared total (all-or-nothing check).
 6. The receipt image is uploaded to Cloudinary; on failure, it is uploaded to catbox.moe.
 7. The API returns the receipt data: items list, shop names, tax %, total, date, and image URL.
@@ -83,7 +83,7 @@ settledown exposes a [Django Ninja](https://django-ninja.dev/) API under the `/a
 | django-redis | Redis cache backend for tokens and metadata |
 | requests | HTTP client for the Settle Up REST API and image uploads |
 | cloudinary | Cloudinary Python SDK for image uploads |
-| googletrans | Google Translate wrapper for Japanese-to-English translation |
+| googletrans | Google Translate wrapper for translating receipt text to English |
 
 ## Prerequisites
 
@@ -122,7 +122,7 @@ All variables are optional and default to an empty value unless noted otherwise.
 | --- | --- | --- | --- |
 | `LLM_API_KEY` | No | API key for the OpenAI/LLM7 OCR provider (`get_receipt_agent`) | _(empty)_ |
 | `OPENROUTER_API_KEY` | No | API key for the OpenRouter OCR provider (`get_openrouter_receipt_agent`); the OCR endpoint uses this by default | _(empty)_ |
-| `OPENROUTER_MODEL` | No | Model id sent to OpenRouter for the OCR flow | `google/gemini-2.5-flash-lite` |
+| `OPENROUTER_MODEL` | No | Model id sent to OpenRouter for the OCR flow | `google/gemini-3-flash-preview` |
 | `CLOUDINARY_API_SECRET` | No | Cloudinary API secret for image management | _(empty)_ |
 | `CLOUDINARY_API_KEY` | No | Cloudinary API key for image management | _(empty)_ |
 | `SETTLE_UP_API_KEY` | No | API key for Settle Up Firebase authentication | _(empty)_ |
@@ -195,10 +195,10 @@ Extract receipt items from an uploaded image using OCR via AI.
 
 | Field | Type | Description |
 | --- | --- | --- |
-| `receipt_items` | `list[ReceiptItemData]` | List of receipt items (each with `english_name: str`, `japanese_name: str`, `item_order: int`, `cost: float`, `quantity: int`, `discount: int`) |
+| `receipt_items` | `list[ReceiptItemData]` | List of receipt items (each with `english_name: str`, `japanese_name: str` — the original printed text, whatever the language — `item_order: int`, `cost: float`, `quantity: int`, `discount: float`) |
 | `en_shop_name` | `str` | Shop name in English |
-| `jp_shop_name` | `str` | Shop name in Japanese |
-| `tax_percentage` | `float` | Tax percentage |
+| `jp_shop_name` | `str` | Shop name as printed on the receipt (original language) |
+| `tax_percentage` | `float` | Tax percentage added on top of item costs (0 when the total already includes tax) |
 | `total_amount` | `float` | Total receipt amount |
 | `receipt_date` | `datetime` | Receipt date |
 | `receipt_image_url` | `str` | URL of the uploaded receipt image |

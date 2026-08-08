@@ -37,15 +37,16 @@ def test_default_factory_uses_llm7_model():
     assert agent.model.model_name == "gpt-5-mini"
 
 
-@override_settings(OPENROUTER_API_KEY="test-key")
+@override_settings(OPENROUTER_API_KEY="test-key", OPENROUTER_MODEL="test/model-id")
 def test_openrouter_factory_uses_clean_openai_model():
     agent = get_openrouter_receipt_agent()
     assert isinstance(agent, Agent)
     # OpenRouter returns OpenAI-compliant responses: a clean OpenAIChatModel,
-    # NOT the LLM7 patch. The default model id is Gemini routed via OpenRouter.
+    # NOT the LLM7 patch. OPENROUTER_MODEL is pinned above so the test does not
+    # depend on the developer's .env / the settings default.
     assert isinstance(agent.model, OpenAIChatModel)
     assert not isinstance(agent.model, LLM7ChatModel)
-    assert agent.model.model_name == "google/gemini-2.5-flash-lite"
+    assert agent.model.model_name == "test/model-id"
 
 
 @override_settings(
@@ -61,7 +62,7 @@ def test_both_factories_register_translate_tool():
     # The shared _build_agent wires the translate tool onto both providers.
     for factory in (get_receipt_agent, get_openrouter_receipt_agent):
         agent = factory()
-        assert "translate_jp_to_en_text" in agent._function_toolset.tools
+        assert "translate_to_en_text" in agent._function_toolset.tools
 
 
 @override_settings(OPENROUTER_API_KEY="test-key")
