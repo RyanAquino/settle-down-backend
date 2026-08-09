@@ -10,6 +10,7 @@ from backend_api.dto.receipt_item import ReceiptItemData
 class SettleUpGroupSchema(Schema):
     name: str
     id: str
+    currency: str | None = None
 
 
 class SettleUpUserSchema(Schema):

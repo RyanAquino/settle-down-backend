@@ -31,7 +31,9 @@ class SettleUpClient:
         self.auth_params = {"auth": creds.get("idToken")}
 
     def get_groups(self) -> list[SettleUpGroup]:
-        cache_key = "settle_up_groups"
+        # v2: cached value shape changed (currency field added); entries
+        # pickled under the old key lack the attribute.
+        cache_key = "settle_up_groups_v2"
 
         if v := cache.get(cache_key):
             return v
@@ -44,15 +46,12 @@ class SettleUpClient:
         groups_map = []
 
         for group_id, metadata in groups.items():
-            group = requests.get(
-                f"{settings.SETTLE_UP_BASE_URL}/groups/{group_id}.json",
-                params=self.auth_params,
-            )
-            group = group.json()
+            group = self.get_group(group_id)
             groups_map.append(
                 SettleUpGroup(
                     name=group["name"],
                     id=group_id,
+                    currency=group.get("convertedToCurrency"),
                 )
             )
         groups_map = groups_map[::-1]
