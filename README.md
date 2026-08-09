@@ -126,6 +126,7 @@ All variables are optional and default to an empty value unless noted otherwise.
 | `OPENROUTER_MODEL` | No | Model id sent to OpenRouter for the OCR flow | `google/gemini-3-flash-preview` |
 | `CLOUDINARY_API_SECRET` | No | Cloudinary API secret for image management | _(empty)_ |
 | `CLOUDINARY_API_KEY` | No | Cloudinary API key for image management | _(empty)_ |
+| `RECEIPT_TIMEZONE` | No | Timezone used to interpret naive `receipt_date` values in the transaction API (receipts print local wall-clock time) | `Asia/Tokyo` |
 | `SETTLE_UP_API_KEY` | No | API key for Settle Up Firebase authentication | _(empty)_ |
 | `SETTLE_UP_API_DOMAIN` | No | Domain for the Settle Up API Firebase auth domain and database URL | _(empty)_ |
 | `SETTLE_UP_API_NAMESPACE` | No | Firebase project namespace for storage bucket and project ID | _(empty)_ |
@@ -312,7 +313,7 @@ Create a new settlement transaction. Transactions are created in Settle Up with 
 | `user_receipt_items` | `list[UserTransactionSchema]` | Receipt items per user (each with `member_id: str`, `cost: float`) |
 | `split_receipt_items` | `list[float]` | Optional split items (defaults to an empty list) |
 | `group_id` | `str` | Group ID |
-| `receipt_date` | `datetime \| None` | Optional receipt date |
+| `receipt_date` | `datetime \| None` | Optional receipt date/time; aware values keep their offset, naive values are interpreted in `RECEIPT_TIMEZONE` |
 | `receipt_image_url` | `str \| None` | Optional receipt image URL |
 
 **Response:** `204 No Content` (empty body) on success.

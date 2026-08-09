@@ -20,6 +20,9 @@ load_dotenv()
 LLM_API_KEY = os.getenv("LLM_API_KEY")
 OPENROUTER_API_KEY = os.getenv("OPENROUTER_API_KEY")
 OPENROUTER_MODEL = os.getenv("OPENROUTER_MODEL", "google/gemini-3-flash-preview")
+# Timezone assumed for naive receipt_date values sent to the transaction API
+# (receipts print local wall-clock time; JP is the app's original market).
+RECEIPT_TIMEZONE = os.getenv("RECEIPT_TIMEZONE", "Asia/Tokyo")
 CLOUDINARY_API_SECRET = os.getenv("CLOUDINARY_API_SECRET")
 CLOUDINARY_API_KEY = os.getenv("CLOUDINARY_API_KEY")
 CLOUDINARY_CLOUD_NAME = os.getenv("CLOUDINARY_CLOUD_NAME", "dpbqobzo9")

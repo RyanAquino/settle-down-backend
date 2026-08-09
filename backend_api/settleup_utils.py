@@ -1,5 +1,6 @@
 import time
 from datetime import timezone
+from zoneinfo import ZoneInfo
 
 import pyrebase
 import requests
@@ -7,7 +8,7 @@ from django.conf import settings
 from django.core.cache import cache
 
 from backend_api.dto.settleup import SettleUpGroup
-from backend_api.utils import compute_member_totals, compute_weights
+from backend_api.utils import compute_member_totals, compute_weights, format_amount
 from backend_api.schemas import TransactionPostIn, UserTransactionSchema
 
 
@@ -110,8 +111,13 @@ class SettleUpClient:
         now = time.time_ns() // 1_000_000
 
         if payload.receipt_date:
-            now = payload.receipt_date.replace(tzinfo=timezone.utc)
-            now = int(now.timestamp() * 1000)
+            receipt_dt = payload.receipt_date
+            if receipt_dt.tzinfo is None:
+                # Naive values are the receipt's printed local wall-clock time.
+                receipt_dt = receipt_dt.replace(
+                    tzinfo=ZoneInfo(settings.RECEIPT_TIMEZONE)
+                )
+            now = int(receipt_dt.astimezone(timezone.utc).timestamp() * 1000)
 
         member_receipt_item_total_map = self._compute_transaction(
             receipt_items=payload.user_receipt_items,
@@ -135,13 +141,15 @@ class SettleUpClient:
             "dateTime": now,
             "exchangeRates": {"JPY": "1"},
             "fixedExchangeRate": False,
-            "items": [{"amount": str(payload.total_amount), "forWhom": for_whom}],
+            "items": [
+                {"amount": format_amount(payload.total_amount), "forWhom": for_whom}
+            ],
             "purpose": payload.purpose,
             "type": "expense",
             "whoPaid": [
                 {
                     "memberId": payload.paying_member_id,
-                    "weight": str(payload.total_amount),
+                    "weight": format_amount(payload.total_amount),
                 }
             ],
         }

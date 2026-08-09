@@ -18,6 +18,11 @@ from backend_api.schemas import UserTransactionSchema
 MAX_SPREAD_UNITS = 100
 
 
+def format_amount(value: float) -> str:
+    """Render a money amount for the Settle Up API: no trailing .0 on whole values."""
+    return str(int(value)) if float(value).is_integer() else str(value)
+
+
 def split_amount_evenly(amount: float, parts: int) -> list[float]:
     """Split a non-negative ``amount`` into ``parts`` portions summing back to it exactly.
 

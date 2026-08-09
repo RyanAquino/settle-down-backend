@@ -14,9 +14,18 @@ from backend_api.schemas import UserTransactionSchema
 from backend_api.utils import (
     compute_member_totals,
     compute_weights,
+    format_amount,
     split_amount_evenly,
     spread_item_quantities,
 )
+
+
+class TestFormatAmount:
+    def test_whole_value_has_no_trailing_decimal(self):
+        assert format_amount(200.0) == "200"
+
+    def test_fractional_value_kept_as_is(self):
+        assert format_amount(131.9) == "131.9"
 
 
 def _item(cost, quantity, name="Shake", order=1, discount=0):

@@ -45,7 +45,7 @@ class TestFourMemberScenarios:
         # Only the two buyers owe, in a 5:3 ratio; members 3 and 4 are absent.
         assert for_whom == {"member_1": "5", "member_2": "3"}
         # The non-buying payer still fronts the full amount.
-        assert posted["whoPaid"] == [{"memberId": "member_3", "weight": "800.0"}]
+        assert posted["whoPaid"] == [{"memberId": "member_3", "weight": "800"}]
 
     def test_two_buyers_plus_shared_item_spreads_to_all_four(
         self, settle_up_client, mock_settleup
@@ -127,4 +127,4 @@ class TestFourMemberScenarios:
             "member_4": "10",
         }
         assert for_whom["member_1"] == for_whom["member_2"]
-        assert posted["whoPaid"] == [{"memberId": "member_1", "weight": "2640.0"}]
+        assert posted["whoPaid"] == [{"memberId": "member_1", "weight": "2640"}]

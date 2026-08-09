@@ -1,4 +1,53 @@
+from datetime import datetime
+from zoneinfo import ZoneInfo
+
 from backend_api.schemas import TransactionPostIn, UserTransactionSchema
+
+
+def _payload(**overrides):
+    defaults = dict(
+        purpose="Lunch",
+        paying_member_id="Member 1",
+        tax_percentage=10,
+        total_amount=200.0,
+        user_receipt_items=[
+            UserTransactionSchema(member_id="Member 1", cost=100),
+            UserTransactionSchema(member_id="Member 2", cost=100),
+        ],
+        split_receipt_items=[],
+        group_id="Group A",
+    )
+    defaults.update(overrides)
+    return TransactionPostIn(**defaults)
+
+
+class TestReceiptDateHandling:
+    """receipt_date → Settle Up dateTime (epoch ms).
+
+    Receipts print local wall-clock time: naive values are interpreted in
+    settings.RECEIPT_TIMEZONE (Asia/Tokyo by default), aware values keep their
+    own offset — the old code relabeled every value as UTC, shifting all
+    JP/TW/HK receipts 8-9 hours late.
+    """
+
+    def test_naive_receipt_date_interpreted_in_receipt_timezone(
+        self, settle_up_client, mock_settleup
+    ):
+        naive = datetime(2026, 8, 9, 19, 30)
+        settle_up_client.create_transaction(_payload(receipt_date=naive))
+
+        body = mock_settleup.requests.post.call_args.kwargs["json"]
+        expected = naive.replace(tzinfo=ZoneInfo("Asia/Tokyo"))
+        assert body["dateTime"] == int(expected.timestamp() * 1000)
+
+    def test_aware_receipt_date_offset_is_respected(
+        self, settle_up_client, mock_settleup
+    ):
+        aware = datetime(2026, 8, 9, 19, 30, tzinfo=ZoneInfo("Asia/Hong_Kong"))
+        settle_up_client.create_transaction(_payload(receipt_date=aware))
+
+        body = mock_settleup.requests.post.call_args.kwargs["json"]
+        assert body["dateTime"] == int(aware.timestamp() * 1000)
 
 
 class TestCreateTransactionPayload:
@@ -32,10 +81,10 @@ class TestCreateTransactionPayload:
         assert body["exchangeRates"] == {"JPY": "1"}
         assert body["fixedExchangeRate"] is False
         assert body["purpose"] == "Lunch"
-        assert body["whoPaid"] == [{"memberId": "Member 1", "weight": "200.0"}]
+        assert body["whoPaid"] == [{"memberId": "Member 1", "weight": "200"}]
         assert body["items"] == [
             {
-                "amount": "200.0",
+                "amount": "200",
                 "forWhom": [
                     {"memberId": "Member 1", "weight": "1"},
                     {"memberId": "Member 2", "weight": "1"},
