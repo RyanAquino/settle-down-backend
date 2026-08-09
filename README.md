@@ -2,7 +2,7 @@
 
 > Receipt-splitting backend that extracts expenses from photo receipts via OCR and files them into Settle Up groups with tax-aware cost apportionment.
 
-settledown is a Django REST API that turns a photo of a receipt into a settled group expense. It processes receipt images from Japan, Taiwan, and Hong Kong, extracts itemized costs via multimodal LLM analysis (with translation of Japanese/Chinese text to English), and automatically creates transaction records in [Settle Up](https://settleup.io/). Note that transaction creation currently files every expense in JPY (the currency is hardcoded, with no currency field in the OCR output or transaction API) — the amounts of a Taiwan or Hong Kong receipt are extracted correctly but recorded under JPY until currency support is threaded through. It handles group-based expense splitting with support for shared items, per-person itemization, and all-or-nothing tax computation, caching Settle Up group and member data in Redis to minimize Firebase API calls.
+settledown is a Django REST API that turns a photo of a receipt into a settled group expense. It processes receipt images from Japan, Taiwan, and Hong Kong, extracts itemized costs via multimodal LLM analysis (with translation of Japanese/Chinese text to English), and automatically creates transaction records in [Settle Up](https://settleup.io/). Transactions are filed in each group's own Settle Up currency (the group document's convertedToCurrency), so a Taiwan or Hong Kong group records its receipts in TWD/HKD; receipt amounts are assumed to already be in the group's currency — there is no FX conversion between a receipt's currency and a differently-denominated group. It handles group-based expense splitting with support for shared items, per-person itemization, and all-or-nothing tax computation, caching Settle Up group and member data in Redis to minimize Firebase API calls.
 
 ## License
 
@@ -69,7 +69,7 @@ settledown exposes a [Django Ninja](https://django-ninja.dev/) API under the `/a
 4. Tax is added per member **only if** validation passes: `sum(member taxes + member items + shared taxes) == total_amount` (float equality — all-or-nothing).
 5. Shared items are split evenly across all group members (fetched from the Settle Up cache).
 6. Integer weights are computed via GCD reduction on the final per-member totals.
-7. A single-item transaction is `POST`ed to Settle Up. `whoPaid` contains the full `total_amount` as the payer's weight, while `forWhom` contains the GCD-reduced per-member weights; `currencyCode` is `JPY`.
+7. A single-item transaction is `POST`ed to Settle Up. `whoPaid` contains the full `total_amount` as the payer's weight, while `forWhom` contains the GCD-reduced per-member weights; `currencyCode` is the group's currency, with an identity `exchangeRates` entry.
 8. Settle Up returns the transaction ID.
 
 ## Tech Stack
@@ -248,6 +248,7 @@ Retrieve the list of settle-up groups.
 | --- | --- | --- |
 | `name` | `str` | Group name |
 | `id` | `str` | Group ID |
+| `currency` | `str \| null` | The group's currency (Settle Up `convertedToCurrency`) |
 
 **Example:**
 
@@ -258,8 +259,8 @@ curl -X GET "http://localhost:8000/api/v1/settle-up/groups/" \
 
 ```json
 [
-  { "name": "Apartment", "id": "group-abc123" },
-  { "name": "Trip to Kyoto", "id": "group-def456" }
+  { "name": "Apartment", "id": "group-abc123", "currency": "JPY" },
+  { "name": "Trip to Kyoto", "id": "group-def456", "currency": "JPY" }
 ]
 ```
 
@@ -298,7 +299,7 @@ curl -X GET "http://localhost:8000/api/v1/settle-up/users/?group_id=group-abc123
 
 ### `POST /api/v1/settle-up/transactions/`
 
-Create a new settlement transaction. Transactions are created in Settle Up with the currency hardcoded to **JPY**.
+Create a new settlement transaction. Transactions are created in Settle Up in **the group's currency** (fetched from the group document); amounts are assumed to already be denominated in it.
 
 **Auth:** Bearer token required.
 
@@ -416,7 +417,7 @@ settledown/
 - **No Django ORM models:** transactions are created only via the Firebase REST API.
 - **Django admin is disabled** (`admin.py` is commented out).
 - **Tax is all-or-nothing:** it is computed only if `member_taxes + member_items + shared_tax == total_amount` (float equality).
-- **Currency is hardcoded to JPY** in transactions.
+- **No FX conversion:** transactions are filed in the group's currency and receipt amounts are assumed to match it; a receipt in a different currency than its group is recorded unconverted.
 - **`total_amount` is trusted input:** there is no reconciliation if extracted items differ from the declared total.
 - **Settle Up metadata is cached ~24h** (~86,500s): group/member info may be stale until the cache expires.
 - **Shared items are split evenly** across all members; there are no per-member overrides.

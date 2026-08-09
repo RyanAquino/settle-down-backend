@@ -45,14 +45,14 @@ Constructed fresh per request. `__init__` signs in to Firebase via `pyrebase` an
 The money logic is two methods worth understanding before touching anything financial:
 
 - **`_compute_transaction()`** turns per-member items + shared items + a tax % + the trusted `total_amount` into `{member_id: yen_owed}`. It does not know whether the receipt's printed total already includes consumption tax, so it *infers* it: `should_compute_tax` is an **exact float `==` comparison** of `(pre-tax items + computed tax + shared) == total_amount`. If equal, tax was excluded and gets added to everyone; if not, tax is assumed already baked in and is not added. This is held together by `round(_, 2)` on every tax term — those rounds are load-bearing, not cosmetic (they were the "Fix tax calculation precision" change).
-- **`_compute_weights()`** reduces the per-member totals to the smallest integer ratio (`int(round(s*100))` then divide by the GCD). In `create_transaction`, those GCD-reduced weights go into the transaction's `forWhom`, while `whoPaid` carries the **full `total_amount`** as the payer's weight (`settleup_utils.py:186-207`) — don't conflate the two. Currency is hardcoded to `JPY`.
+- **`_compute_weights()`** reduces the per-member totals to the smallest integer ratio (`int(round(s*100))` then divide by the GCD). In `create_transaction`, those GCD-reduced weights go into the transaction's `forWhom`, while `whoPaid` carries the **full `total_amount`** as the payer's weight (`settleup_utils.py:186-207`) — don't conflate the two. The currency comes from the group document (`get_group` → `convertedToCurrency`, strict access) with an identity `exchangeRates` map.
 
 ### Constraints baked into the current model (don't assume otherwise)
 
 - Tax is a single scalar applied **all-or-nothing** — mixed rates (e.g. JP 8% food vs 10%) are not representable. The OCR prompt therefore prefers tax-inclusive line costs with `tax_percentage=0` whenever the printed items already sum to the total, and only emits a non-zero rate when the receipt genuinely adds tax between subtotal and total.
 - `total_amount` is **trusted input**, never validated; the OCR prompt merely asks the LLM to make items sum to it.
 - The float-`==` tax heuristic means a 1-yen rounding drift can silently flip the entire tax decision. Be careful changing any rounding or the comparison.
-- OCR reads JP/TW/HK receipts, but **`create_transaction` files every expense as `JPY`** — there is no currency field anywhere in the pipeline, so TWD/HKD totals are recorded as yen-denominated numbers. Threading currency through (OCR output → `TransactionPostIn` → `currencyCode`/`exchangeRates`) is a known follow-up.
+- OCR reads JP/TW/HK receipts and **`create_transaction` files each expense in its group's currency** (`convertedToCurrency` from the cached group document) with an identity exchange rate. Receipt amounts are assumed to be in the group's currency — filing a receipt into a differently-denominated group records the numbers unconverted. Real FX threading (receipt currency → rates) remains a follow-up; note Settle Up's API has no exchange-rates endpoint.
 
 ## Gotchas
 
