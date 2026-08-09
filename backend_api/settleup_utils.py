@@ -150,10 +150,13 @@ class SettleUpClient:
             if total_amt > 0
         ]
 
+        group = self.get_group(payload.group_id)
+        currency = group["convertedToCurrency"]
+
         transaction_payload = {
-            "currencyCode": "JPY",
+            "currencyCode": currency,
             "dateTime": now,
-            "exchangeRates": {"JPY": "1"},
+            "exchangeRates": {currency: "1"},
             "fixedExchangeRate": False,
             "items": [
                 {"amount": format_amount(payload.total_amount), "forWhom": for_whom}
