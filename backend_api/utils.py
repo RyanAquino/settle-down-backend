@@ -90,7 +90,7 @@ def compute_member_totals(
     total_amount: float = 0,
     split_receipt_items: list[float] | None = None,
 ) -> dict[str, float]:
-    """Map each member to the yen they owe.
+    """Map each member to the amount they owe, in the group's currency.
 
     Infers whether the printed total already includes consumption tax via an
     exact float `==` comparison (load-bearing — do not change). The round(_, 2)

@@ -242,7 +242,7 @@ Retrieve the list of settle-up groups.
 
 **Request:** No parameters.
 
-**Response** (`200`): a list of groups, each with:
+**Response** (`200`): paginated (django-ninja's default `LimitOffsetPagination`) — `items` is a list of groups, each with:
 
 | Field | Type | Description |
 | --- | --- | --- |
@@ -258,10 +258,13 @@ curl -X GET "http://localhost:8000/api/v1/settle-up/groups/" \
 ```
 
 ```json
-[
-  { "name": "Apartment", "id": "group-abc123", "currency": "JPY" },
-  { "name": "Trip to Kyoto", "id": "group-def456", "currency": "JPY" }
-]
+{
+  "items": [
+    { "name": "Apartment", "id": "group-abc123", "currency": "JPY" },
+    { "name": "Trip to Kyoto", "id": "group-def456", "currency": "JPY" }
+  ],
+  "count": 2
+}
 ```
 
 ### `GET /api/v1/settle-up/users/`
@@ -276,7 +279,7 @@ Retrieve the users in a specific settle-up group.
 | --- | --- | --- |
 | `group_id` | `str` | ID of the group |
 
-**Response** (`200`): a list of users, each with:
+**Response** (`200`): paginated (django-ninja's default `LimitOffsetPagination`) — `items` is a list of users, each with:
 
 | Field | Type | Description |
 | --- | --- | --- |
@@ -291,10 +294,13 @@ curl -X GET "http://localhost:8000/api/v1/settle-up/users/?group_id=group-abc123
 ```
 
 ```json
-[
-  { "name": "Member 1", "id": "member-1" },
-  { "name": "Member 2", "id": "member-2" }
-]
+{
+  "items": [
+    { "name": "Member 1", "id": "member-1" },
+    { "name": "Member 2", "id": "member-2" }
+  ],
+  "count": 2
+}
 ```
 
 ### `POST /api/v1/settle-up/transactions/`

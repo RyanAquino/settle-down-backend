@@ -59,7 +59,7 @@ class SettleUpClient:
 
         return groups_map
 
-    def get_group(self, group_id) -> dict:
+    def get_group(self, group_id) -> dict | None:
         cache_key = f"{group_id}_settle_up_group"
 
         if v := cache.get(cache_key):
@@ -70,7 +70,10 @@ class SettleUpClient:
             params=self.auth_params,
         )
         group = group.json()
-        cache.set(cache_key, timeout=86500, value=group)
+        # Firebase returns a truthy error body ({"error": ...}) on auth or
+        # permission failures; caching it would pin the failure for ~24h.
+        if isinstance(group, dict) and "name" in group:
+            cache.set(cache_key, timeout=86500, value=group)
 
         return group
 
