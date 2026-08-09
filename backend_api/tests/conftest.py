@@ -1,5 +1,5 @@
 from types import SimpleNamespace
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 
 import pytest
 
@@ -16,6 +16,10 @@ GROUP_MEMBERS = {
     "Member 2": {"name": "Member 2"},
 }
 
+# Stubbed SettleUp REST response for `groups/{group_id}.json`. The default
+# currency is JPY so the long-standing payload-pinning tests keep passing.
+GROUP_INFO = {"name": "Group A", "convertedToCurrency": "JPY"}
+
 
 @pytest.fixture
 def mock_settleup():
@@ -24,7 +28,10 @@ def mock_settleup():
     - Firebase auth (``pyrebase``): the real ``sign_in_with_email_and_password``
       login is replaced with fake credentials, so constructing a
       ``SettleUpClient`` performs **no real login**.
-    - The SettleUp REST API (``requests``) used to fetch group members.
+    - The SettleUp REST API (``requests``) used to fetch group members and
+      groups; the REST API mock routes ``groups/{group_id}.json`` to ``group_json``
+      (default ``GROUP_INFO``), which tests mutate in place to simulate other
+      currencies.
     - The cache, forced to always miss so the mocked login/REST paths run and
       Redis is never contacted.
 
@@ -46,8 +53,25 @@ def mock_settleup():
         # Stub the SettleUp REST members endpoint.
         mock_requests.get.return_value.json.return_value = GROUP_MEMBERS
 
+        # Route group-document fetches to a dedicated response; every other
+        # URL falls through to `return_value`, so tests that retarget the
+        # members endpoint via `return_value.json.return_value` keep working.
+        group_json = dict(GROUP_INFO)
+
+        def _route_get(url, *args, **kwargs):
+            if "/userGroups/" not in url and "/groups/" in url:
+                resp = MagicMock()
+                resp.json.return_value = group_json
+                return resp
+            return mock_requests.get.return_value
+
+        mock_requests.get.side_effect = _route_get
+
         yield SimpleNamespace(
-            pyrebase=mock_pyrebase, requests=mock_requests, cache=mock_cache
+            pyrebase=mock_pyrebase,
+            requests=mock_requests,
+            cache=mock_cache,
+            group_json=group_json,
         )
 
 
