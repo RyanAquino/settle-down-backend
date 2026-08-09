@@ -11,7 +11,53 @@ import math
 from collections import defaultdict
 from functools import reduce
 
+from backend_api.dto.receipt_item import ReceiptItemData
 from backend_api.schemas import UserTransactionSchema
+
+# Ceiling for per-unit spreading; no plausible group receipt line exceeds it.
+MAX_SPREAD_UNITS = 100
+
+
+def split_amount_evenly(amount: float, parts: int) -> list[float]:
+    """Split a non-negative ``amount`` into ``parts`` portions summing back to it exactly.
+
+    Splits in whole currency units when ``amount`` is integral (JPY/TWD
+    receipts have no subunits) and in hundredths otherwise (HKD cents); the
+    first portions absorb the remainder, e.g. 1000/3 -> [334, 333, 333].
+    """
+    scale = 1 if float(amount).is_integer() else 100
+    base, remainder = divmod(round(amount * scale), parts)
+    return [
+        round((base + (1 if i < remainder else 0)) / scale, 2) for i in range(parts)
+    ]
+
+
+def spread_item_quantities(items: list[ReceiptItemData]) -> list[ReceiptItemData]:
+    """Spread each multi-quantity line into one quantity-1 item per unit.
+
+    "Shake x3 / 1050" becomes three quantity-1 "Shake" items (350 each), so
+    every unit can be assigned to a different group member. The line's cost
+    and discount are distributed with their sums preserved, and item_order is
+    renumbered sequentially over the spread list (emission order is kept).
+
+    Lines with quantity above ``MAX_SPREAD_UNITS`` pass through unspread: a
+    misread (e.g. barcode digits landing in quantity) must not fan out into
+    millions of item copies.
+    """
+    spread: list[ReceiptItemData] = []
+    for item in items:
+        if item.quantity <= 1 or item.quantity > MAX_SPREAD_UNITS:
+            spread.append(item)
+            continue
+        costs = split_amount_evenly(item.cost, item.quantity)
+        discounts = split_amount_evenly(item.discount, item.quantity)
+        spread.extend(
+            item.model_copy(update={"quantity": 1, "cost": cost, "discount": discount})
+            for cost, discount in zip(costs, discounts)
+        )
+    for order, item in enumerate(spread, start=1):
+        item.item_order = order
+    return spread
 
 
 def compute_weights(shares) -> list[int]:

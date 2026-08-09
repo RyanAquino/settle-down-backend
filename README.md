@@ -57,8 +57,9 @@ settledown exposes a [Django Ninja](https://django-ninja.dev/) API under the `/a
 3. The agent receives a region-aware system prompt (Japan / Taiwan / Hong Kong receipt conventions: items, original + English names, tax handling, date-calendar conversion, totals) plus the image.
 4. The agent calls a `translate_to_en_text` tool when the receipt prints no English version of a name.
 5. The LLM validates that the extracted items sum to the declared total (all-or-nothing check).
-6. The receipt image is uploaded to Cloudinary; on failure, it is uploaded to catbox.moe.
-7. The API returns the receipt data: items list, shop names, tax %, total, date, and image URL.
+6. Multi-quantity lines are spread into one quantity-1 item per unit (e.g. `Shake x3` for 1,050 becomes three `Shake` items of 350 each, costs distributed so the line total is preserved), so each unit can be assigned to a different group member. Lines with an implausible quantity (over 100 — almost certainly an OCR misread) pass through unspread.
+7. The receipt image is uploaded to Cloudinary; on failure, it is uploaded to catbox.moe.
+8. The API returns the receipt data: items list, shop names, tax %, total, date, and image URL.
 
 ### Flow 2 — Transaction Creation
 

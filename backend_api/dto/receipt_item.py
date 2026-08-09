@@ -22,7 +22,9 @@ class ReceiptItemData(BaseModel):
     cost: float = Field(
         description="The final line price for this item after any discount, for the quantity shown"
     )
-    quantity: int = Field(description="The quantity of the purchased item")
+    quantity: int = Field(
+        ge=1, description="The quantity of the purchased item (at least 1)"
+    )
     discount: float = Field(
         0,
         description="The discount amount applied to this line, in the receipt's currency (0 if none). Already subtracted from cost",

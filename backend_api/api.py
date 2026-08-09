@@ -6,6 +6,7 @@ from pydantic_ai import BinaryContent
 from .ocr import get_openrouter_receipt_agent
 from .schemas import OCRReceiptPostOut
 from .services import catbox_upload_file, cloudinary_upload_file
+from .utils import spread_item_quantities
 
 logger = logging.getLogger(__name__)
 
@@ -25,6 +26,9 @@ async def post_ocr_receipt(request, file: File[UploadedFile]):
         ]
     )
     results = result.output
+    # Spread "Shake x3" into three quantity-1 items so each unit can be
+    # assigned to a different group member.
+    results.receipt_items = spread_item_quantities(results.receipt_items)
 
     try:
         url = cloudinary_upload_file(file)
