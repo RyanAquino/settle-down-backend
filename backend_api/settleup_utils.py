@@ -30,7 +30,9 @@ class SettleUpClient:
         self.auth_params = {"auth": creds.get("idToken")}
 
     def get_groups(self) -> list[SettleUpGroup]:
-        cache_key = "settle_up_groups"
+        # v2: the cached value's shape changed (currency field added); entries
+        # pickled under the old key predate the attribute.
+        cache_key = "settle_up_groups_v2"
 
         if v := cache.get(cache_key):
             return v
@@ -43,15 +45,16 @@ class SettleUpClient:
         groups_map = []
 
         for group_id, metadata in groups.items():
-            group = requests.get(
-                f"{settings.SETTLE_UP_BASE_URL}/groups/{group_id}.json",
-                params=self.auth_params,
-            )
-            group = group.json()
+            # Via get_group so each document is individually cached too — a
+            # later create_transaction then gets a warm hit for its currency.
+            group = self.get_group(group_id)
             groups_map.append(
                 SettleUpGroup(
                     name=group["name"],
                     id=group_id,
+                    # Tolerant .get(): one malformed group must not break the
+                    # whole listing. Strictness lives at transaction time.
+                    currency=group.get("convertedToCurrency"),
                 )
             )
         groups_map = groups_map[::-1]
@@ -59,11 +62,12 @@ class SettleUpClient:
 
         return groups_map
 
-    def get_group(self, group_id) -> dict:
+    def get_group(self, group_id) -> dict | None:
         """Fetch (and cache) the raw Settle Up group document.
 
         Carries ``convertedToCurrency`` — the currency the group is configured
-        in, which every transaction filed against it must use.
+        in, which every transaction filed against it must use. Returns None for
+        a nonexistent group (Firebase answers with null).
         """
         cache_key = f"{group_id}_settle_up_group"
 
@@ -75,7 +79,10 @@ class SettleUpClient:
             params=self.auth_params,
         )
         group = group.json()
-        cache.set(cache_key, timeout=86500, value=group)
+        # Firebase returns a truthy error body ({"error": ...}) on auth or
+        # permission failures; caching it would pin the failure for ~24h.
+        if isinstance(group, dict) and "name" in group:
+            cache.set(cache_key, timeout=86500, value=group)
 
         return group
 
