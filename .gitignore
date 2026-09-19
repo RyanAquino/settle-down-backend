@@ -256,6 +256,10 @@ cython_debug/
 # Live OCR test receipt image (real receipt — keep out of version control)
 backend_api/tests/fixtures/receipt.*
 
+# macOS
+.DS_Store
+**/.DS_Store
+
 ### Python Patch ###
 # Poetry local configuration file - https://python-poetry.org/docs/configuration/#local-configuration
 poetry.toml
