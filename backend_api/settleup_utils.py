@@ -157,10 +157,15 @@ class SettleUpClient:
             if total_amt > 0
         ]
 
+        # Strict: never file money under a guessed currency. The identity
+        # exchange rate is correct because the expense IS denominated in the
+        # group's currency (Settle Up exposes no exchange-rates endpoint).
+        currency = self.get_group(payload.group_id)["convertedToCurrency"]
+
         transaction_payload = {
-            "currencyCode": "JPY",
+            "currencyCode": currency,
             "dateTime": now,
-            "exchangeRates": {"JPY": "1"},
+            "exchangeRates": {currency: "1"},
             "fixedExchangeRate": False,
             "items": [{"amount": str(payload.total_amount), "forWhom": for_whom}],
             "purpose": payload.purpose,
