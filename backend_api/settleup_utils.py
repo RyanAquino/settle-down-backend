@@ -59,6 +59,26 @@ class SettleUpClient:
 
         return groups_map
 
+    def get_group(self, group_id) -> dict:
+        """Fetch (and cache) the raw Settle Up group document.
+
+        Carries ``convertedToCurrency`` — the currency the group is configured
+        in, which every transaction filed against it must use.
+        """
+        cache_key = f"{group_id}_settle_up_group"
+
+        if v := cache.get(cache_key):
+            return v
+
+        group = requests.get(
+            f"{settings.SETTLE_UP_BASE_URL}/groups/{group_id}.json",
+            params=self.auth_params,
+        )
+        group = group.json()
+        cache.set(cache_key, timeout=86500, value=group)
+
+        return group
+
     def get_group_members_by_group(self, group_id):
         cache_key = f"{group_id}_settle_up_users"
 
