@@ -40,18 +40,19 @@ Swagger UI is at `/api/docs/` (authorize with the `APP_AUTH` bearer token).
 
 ### `SettleUpClient` is the core (`backend_api/settleup_utils.py`)
 
-Constructed fresh per request. `__init__` signs in to Firebase via `pyrebase` and caches the token in Redis (~3500s ≈ 58 min). `get_groups` / `get_group_members_by_group` hit the Settle Up REST API and cache results for ~24h (`timeout=86500`) — **so changes made in Settle Up won't appear until that cache expires.**
+Constructed fresh per request. `__init__` signs in to Firebase via `pyrebase` and caches the token in Redis (~3500s ≈ 58 min). `get_groups` / `get_group` / `get_group_members_by_group` hit the Settle Up REST API and cache results for ~24h (`timeout=86500`) — **so changes made in Settle Up won't appear until that cache expires.**
 
 The money logic is two methods worth understanding before touching anything financial:
 
-- **`_compute_transaction()`** turns per-member items + shared items + a tax % + the trusted `total_amount` into `{member_id: yen_owed}`. It does not know whether the receipt's printed total already includes consumption tax, so it *infers* it: `should_compute_tax` is an **exact float `==` comparison** of `(pre-tax items + computed tax + shared) == total_amount`. If equal, tax was excluded and gets added to everyone; if not, tax is assumed already baked in and is not added. This is held together by `round(_, 2)` on every tax term — those rounds are load-bearing, not cosmetic (they were the "Fix tax calculation precision" change).
-- **`_compute_weights()`** reduces the per-member totals to the smallest integer ratio (`int(round(s*100))` then divide by the GCD). In `create_transaction`, those GCD-reduced weights go into the transaction's `forWhom`, while `whoPaid` carries the **full `total_amount`** as the payer's weight (`settleup_utils.py:186-207`) — don't conflate the two. Currency is hardcoded to `JPY`.
+- **`_compute_transaction()`** turns per-member items + shared items + a tax % + the trusted `total_amount` into `{member_id: amount_owed}` (in the group's currency). It does not know whether the receipt's printed total already includes consumption tax, so it *infers* it: `should_compute_tax` is an **exact float `==` comparison** of `(pre-tax items + computed tax + shared) == total_amount`. If equal, tax was excluded and gets added to everyone; if not, tax is assumed already baked in and is not added. This is held together by `round(_, 2)` on every tax term — those rounds are load-bearing, not cosmetic (they were the "Fix tax calculation precision" change).
+- **`_compute_weights()`** reduces the per-member totals to the smallest integer ratio (`int(round(s*100))` then divide by the GCD). In `create_transaction`, those GCD-reduced weights go into the transaction's `forWhom`, while `whoPaid` carries the **full `total_amount`** as the payer's weight (`settleup_utils.py:186-207`) — don't conflate the two. The currency comes from the group document (`get_group` → `convertedToCurrency`, strict access) with an identity `exchangeRates` map.
 
 ### Constraints baked into the current model (don't assume otherwise)
 
 - Tax is a single scalar applied **all-or-nothing** — mixed rates (e.g. JP 8% food vs 10%) are not representable.
 - `total_amount` is **trusted input**, never validated; the OCR prompt merely asks the LLM to make items sum to it.
-- The float-`==` tax heuristic means a 1-yen rounding drift can silently flip the entire tax decision. Be careful changing any rounding or the comparison.
+- The float-`==` tax heuristic means a one-unit rounding drift can silently flip the entire tax decision. Be careful changing any rounding or the comparison.
+- Transactions are filed in the group's currency (`get_group` → `convertedToCurrency`), but there is **no FX conversion**: a receipt denominated differently from its group is recorded unconverted. Because the group document is cached ~24h, a currency changed in Settle Up stays stale here for up to a day — and that staleness now affects money, not just display.
 
 ## Gotchas
 
@@ -60,7 +61,7 @@ The money logic is two methods worth understanding before touching anything fina
 
 ## Testing
 
-`backend_api/tests/conftest.py` provides the `settle_up_client` fixture: a real `SettleUpClient` with `pyrebase`, `requests`, and `cache` all patched, so no login/network/Redis happens. The mocked members endpoint returns exactly **Member 1 and Member 2** (`GROUP_MEMBERS`), and the split-related assertions in `test_transaction.py` depend on that two-member group. Tests exercise `_compute_transaction()` directly across tax-included / tax-excluded / shared-split / fractional-tax scenarios. pytest is configured in `pyproject.toml` (`DJANGO_SETTINGS_MODULE=settledown.settings`, `test_*.py`).
+`backend_api/tests/conftest.py` provides the `settle_up_client` fixture: a real `SettleUpClient` with `pyrebase`, `requests`, and `cache` all patched, so no login/network/Redis happens. The fixture routes the mocked `requests.get` **by URL**: `groups/{id}.json` resolves to a mutable `group_json` (default `GROUP_INFO`, currency JPY) that tests change in place to simulate another currency; every other URL falls through to the shared `return_value`. The mocked members endpoint returns exactly **Member 1 and Member 2** (`GROUP_MEMBERS`), and the split-related assertions in `test_transaction.py` depend on that two-member group. Tests exercise `_compute_transaction()` directly across tax-included / tax-excluded / shared-split / fractional-tax scenarios. pytest is configured in `pyproject.toml` (`DJANGO_SETTINGS_MODULE=settledown.settings`, `test_*.py`).
 
 ## CI
 
