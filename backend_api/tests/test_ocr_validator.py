@@ -1,7 +1,7 @@
 import pytest
 from pydantic_ai import ModelRetry
 
-from backend_api.dataclasses.receipt_item import ReceiptData, ReceiptItemData
+from backend_api.dto.receipt_item import ReceiptData, ReceiptItemData
 from backend_api.ocr import validate_receipt_data
 
 

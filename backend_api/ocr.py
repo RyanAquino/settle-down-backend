@@ -1,8 +1,15 @@
-"""Receipt OCR agent.
+"""Receipt OCR agents.
 
-The pydantic-ai Agent (OpenAI client + LLM7 model + translate tool) is built
-once via a lazy, cached factory. Lazy (not module-level) so importing this
-module never constructs AsyncOpenAI — which raises if LLM_API_KEY is unset.
+Provider-specific pydantic-ai Agents are built once each via lazy, cached
+factories. Lazy (not module-level) so importing this module never constructs a
+client/provider — which raises if the relevant API key is unset.
+
+- ``get_receipt_agent``: OpenAI client + LLM7 model wrapper + translate tool.
+- ``get_openrouter_receipt_agent``: OpenRouter provider (clean OpenAIChatModel).
+
+Both delegate to ``_build_agent`` for the shared output schema, instructions,
+retry budget, output validator, and translate tool — the only difference is the
+underlying model/provider.
 """
 
 from functools import lru_cache
@@ -11,10 +18,13 @@ from django.conf import settings
 from googletrans import Translator
 from openai import AsyncOpenAI
 from pydantic_ai import Agent, ModelRetry, ToolOutput
+from pydantic_ai.models import Model
+from pydantic_ai.models.openrouter import OpenRouterModel
 from pydantic_ai.providers.openai import OpenAIProvider
+from pydantic_ai.providers.openrouter import OpenRouterProvider
 
-from .dataclasses.llm7_override import LLM7ChatModel
-from .dataclasses.receipt_item import ReceiptData
+from .dto.llm7_override import LLM7ChatModel
+from .dto.receipt_item import ReceiptData
 
 INSTRUCTIONS = """\
 You are an expert receipt-reading system for Japanese and English receipts.
@@ -53,14 +63,12 @@ def validate_receipt_data(data: ReceiptData) -> ReceiptData:
     return data
 
 
-@lru_cache(maxsize=1)
-def get_receipt_agent() -> Agent:
-    """Build (once) and return the receipt-reading agent."""
-    client = AsyncOpenAI(
-        # base_url="https://api.llm7.io/v1",
-        api_key=settings.LLM_API_KEY,
-    )
-    model = LLM7ChatModel("gpt-5-mini", provider=OpenAIProvider(openai_client=client))
+def _build_agent(model: Model) -> Agent:
+    """Assemble the receipt-reading agent around a provider-specific model.
+
+    Everything except the underlying model/provider is shared: the output
+    schema, instructions, retry budget, output validator, and translate tool.
+    """
     agent = Agent(
         model=model,
         output_type=ToolOutput(ReceiptData, strict=True),
@@ -84,3 +92,28 @@ def get_receipt_agent() -> Agent:
         return text_result.text
 
     return agent
+
+
+@lru_cache(maxsize=1)
+def get_receipt_agent() -> Agent:
+    """Build (once) the receipt agent backed by the OpenAI/LLM7 model."""
+    client = AsyncOpenAI(
+        # base_url="https://api.llm7.io/v1",
+        api_key=settings.LLM_API_KEY,
+    )
+    model = LLM7ChatModel("gpt-5-mini", provider=OpenAIProvider(openai_client=client))
+    return _build_agent(model)
+
+
+@lru_cache(maxsize=1)
+def get_openrouter_receipt_agent() -> Agent:
+    """Build (once) the receipt agent backed by OpenRouter.
+
+    Uses a clean ``OpenAIChatModel``: OpenRouter returns OpenAI-compliant
+    responses, so the ``LLM7ChatModel`` index/created patch isn't needed.
+    """
+    model = OpenRouterModel(
+        settings.OPENROUTER_MODEL,
+        provider=OpenRouterProvider(api_key=settings.OPENROUTER_API_KEY),
+    )
+    return _build_agent(model)

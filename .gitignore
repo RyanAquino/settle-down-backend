@@ -253,6 +253,9 @@ cython_debug/
 #  and can be added to the global gitignore or merged into this file.  For a more nuclear
 #  option (not recommended) you can uncomment the following to ignore the entire idea folder.
 
+# Live OCR test receipt image (real receipt — keep out of version control)
+backend_api/tests/fixtures/receipt.*
+
 ### Python Patch ###
 # Poetry local configuration file - https://python-poetry.org/docs/configuration/#local-configuration
 poetry.toml
