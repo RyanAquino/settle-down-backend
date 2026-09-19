@@ -53,7 +53,7 @@ settledown exposes a [Django Ninja](https://django-ninja.dev/) API under the `/a
 ### Flow 1 — OCR Receipt Processing
 
 1. The client uploads a receipt image to `POST /api/v1/receipts/receipt-items/`.
-2. The endpoint initializes a Pydantic AI agent backed by the OpenRouter provider (default `google/gemini-2.5-flash-lite`, via `get_openrouter_receipt_agent`). An alternate OpenAI/LLM7 factory (`get_receipt_agent`) remains available.
+2. The endpoint initializes a Pydantic AI agent backed by the OpenRouter provider (default `google/gemini-3-flash-preview`, via `get_openrouter_receipt_agent`). An alternate OpenAI/LLM7 factory (`get_receipt_agent`) remains available.
 3. The agent receives a system prompt (extract items, bilingual shop names, tax %, total) plus the image.
 4. The agent calls a `translate_jp_to_en_text` tool as needed (the system prompt instructs it to always translate the text to English before processing, so the tool may be invoked unconditionally).
 5. The LLM validates that the extracted items sum to the declared total (all-or-nothing check).
@@ -122,7 +122,7 @@ All variables are optional and default to an empty value unless noted otherwise.
 | --- | --- | --- | --- |
 | `LLM_API_KEY` | No | API key for the OpenAI/LLM7 OCR provider (`get_receipt_agent`) | _(empty)_ |
 | `OPENROUTER_API_KEY` | No | API key for the OpenRouter OCR provider (`get_openrouter_receipt_agent`); the OCR endpoint uses this by default | _(empty)_ |
-| `OPENROUTER_MODEL` | No | Model id sent to OpenRouter for the OCR flow | `google/gemini-2.5-flash-lite` |
+| `OPENROUTER_MODEL` | No | Model id sent to OpenRouter for the OCR flow | `google/gemini-3-flash-preview` |
 | `CLOUDINARY_API_SECRET` | No | Cloudinary API secret for image management | _(empty)_ |
 | `CLOUDINARY_API_KEY` | No | Cloudinary API key for image management | _(empty)_ |
 | `SETTLE_UP_API_KEY` | No | API key for Settle Up Firebase authentication | _(empty)_ |

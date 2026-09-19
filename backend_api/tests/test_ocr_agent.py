@@ -15,6 +15,12 @@ from pydantic_ai.models.openai import OpenAIChatModel
 from backend_api.dto.llm7_override import LLM7ChatModel
 from backend_api.ocr import get_openrouter_receipt_agent, get_receipt_agent
 
+# The id ``settledown/settings.py`` falls back to when OPENROUTER_MODEL is unset.
+# Overridden onto the settings below rather than read from them: ``load_dotenv()``
+# means a developer .env pointing at another model would otherwise fail this test
+# locally while CI (which has no .env) passes.
+DEFAULT_OPENROUTER_MODEL = "google/gemini-3-flash-preview"
+
 
 @pytest.fixture(autouse=True)
 def _clear_agent_caches():
@@ -37,7 +43,9 @@ def test_default_factory_uses_llm7_model():
     assert agent.model.model_name == "gpt-5-mini"
 
 
-@override_settings(OPENROUTER_API_KEY="test-key")
+@override_settings(
+    OPENROUTER_API_KEY="test-key", OPENROUTER_MODEL=DEFAULT_OPENROUTER_MODEL
+)
 def test_openrouter_factory_uses_clean_openai_model():
     agent = get_openrouter_receipt_agent()
     assert isinstance(agent, Agent)
@@ -45,7 +53,7 @@ def test_openrouter_factory_uses_clean_openai_model():
     # NOT the LLM7 patch. The default model id is Gemini routed via OpenRouter.
     assert isinstance(agent.model, OpenAIChatModel)
     assert not isinstance(agent.model, LLM7ChatModel)
-    assert agent.model.model_name == "google/gemini-2.5-flash-lite"
+    assert agent.model.model_name == DEFAULT_OPENROUTER_MODEL
 
 
 @override_settings(
