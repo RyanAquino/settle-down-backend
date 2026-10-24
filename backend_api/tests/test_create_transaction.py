@@ -63,3 +63,29 @@ class TestCreateTransactionPayload:
 
         body = mock_settleup.requests.post.call_args.kwargs["json"]
         assert body["receiptUrl"] == "https://example.com/receipt.jpg"
+
+
+class TestCurrencyFollowsGroup:
+    """currencyCode/exchangeRates come from the group document, not a JPY
+    hardcode — a Taiwan group files its receipts in TWD."""
+
+    def test_transaction_uses_group_currency(self, settle_up_client, mock_settleup):
+        mock_settleup.group_json["convertedToCurrency"] = "TWD"
+
+        settle_up_client.create_transaction(
+            TransactionPostIn(
+                purpose="Lunch",
+                paying_member_id="Member 1",
+                tax_percentage=10,
+                total_amount=200.0,
+                user_receipt_items=[
+                    UserTransactionSchema(member_id="Member 1", cost=100),
+                    UserTransactionSchema(member_id="Member 2", cost=100),
+                ],
+                group_id="Group A",
+            )
+        )
+
+        body = mock_settleup.requests.post.call_args.kwargs["json"]
+        assert body["currencyCode"] == "TWD"
+        assert body["exchangeRates"] == {"TWD": "1"}

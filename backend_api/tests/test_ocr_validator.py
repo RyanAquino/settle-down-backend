@@ -43,3 +43,20 @@ class TestValidateReceiptData:
     def test_negative_item_cost_raises(self):
         with pytest.raises(ModelRetry):
             validate_receipt_data(_receipt(500, [_item(-1)]))
+
+
+class TestDecimalCurrencies:
+    """Amounts are denominated in the group's currency, not always whole yen."""
+
+    def test_fractional_discount_is_preserved(self):
+        # HKD/USD receipts carry cents; an int field would silently truncate.
+        item = ReceiptItemData(
+            english_name="Coffee",
+            japanese_name="コーヒー",
+            item_order=1,
+            cost=42.50,
+            quantity=1,
+            discount=7.25,
+        )
+
+        assert item.discount == 7.25
