@@ -23,8 +23,8 @@ from pydantic_ai.models.openrouter import OpenRouterModel
 from pydantic_ai.providers.openai import OpenAIProvider
 from pydantic_ai.providers.openrouter import OpenRouterProvider
 
-from .dto.llm7_override import LLM7ChatModel
-from .dto.receipt_item import ReceiptData
+from backend_api.dto.llm7_override import LLM7ChatModel
+from backend_api.dto.receipt_item import ReceiptData
 
 INSTRUCTIONS = """\
 You are an expert receipt-reading system for Japanese and English receipts.
@@ -63,7 +63,7 @@ def validate_receipt_data(data: ReceiptData) -> ReceiptData:
     return data
 
 
-def _build_agent(model: Model) -> Agent:
+def _build_agent(model: Model) -> Agent[None, ReceiptData]:
     """Assemble the receipt-reading agent around a provider-specific model.
 
     Everything except the underlying model/provider is shared: the output
@@ -84,29 +84,33 @@ def _build_agent(model: Model) -> Agent:
         translator = Translator()
         try:
             text_result = await translator.translate(text, dest="en")
-        except Exception:
+        except Exception as exc:
+            # googletrans scrapes an unofficial endpoint and fails in many ways;
+            # every one of them is worth a retry with a smaller input.
             raise ModelRetry(
                 "Translation failed, please try with a shorter chunk of text."
-            )
+            ) from exc
 
-        return text_result.text
+        translated: str = text_result.text
+        return translated
 
     return agent
 
 
 @lru_cache(maxsize=1)
-def get_receipt_agent() -> Agent:
-    """Build (once) the receipt agent backed by the OpenAI/LLM7 model."""
-    client = AsyncOpenAI(
-        # base_url="https://api.llm7.io/v1",
-        api_key=settings.LLM_API_KEY,
-    )
+def get_receipt_agent() -> Agent[None, ReceiptData]:
+    """Build (once) the receipt agent backed by the OpenAI/LLM7 model.
+
+    Talks to OpenAI by default; LLM7 is OpenAI-compatible, so pointing the
+    client's ``base_url`` at https://api.llm7.io/v1 switches providers.
+    """
+    client = AsyncOpenAI(api_key=settings.LLM_API_KEY)
     model = LLM7ChatModel("gpt-5-mini", provider=OpenAIProvider(openai_client=client))
     return _build_agent(model)
 
 
 @lru_cache(maxsize=1)
-def get_openrouter_receipt_agent() -> Agent:
+def get_openrouter_receipt_agent() -> Agent[None, ReceiptData]:
     """Build (once) the receipt agent backed by OpenRouter.
 
     Uses a clean ``OpenAIChatModel``: OpenRouter returns OpenAI-compliant

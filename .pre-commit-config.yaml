@@ -1,21 +1,18 @@
-# Local hooks intentionally shell out to `uv run` so black/ruff come from the
-# uv dev group — same versions as CI and pyproject.toml, no drift between files.
-# These mirror the CI lint job (uv run ruff check . / uv run black --check .):
-# check-only, whole repo. Install once per clone with `uv run pre-commit install`.
+# Local hooks shell out to `uv run`, so black and ruff come from the uv dev
+# group: the same versions CI uses, with no second pin to drift. On commit they check the
+# staged Python files; `uv run pre-commit run --all-files` checks every tracked
+# file, like the CI lint job. The slower whole-project gates (mypy, tests)
+# run in CI. Install once per clone: `uv run pre-commit install`.
 repos:
   - repo: local
     hooks:
       - id: black
         name: black (check)
-        entry: uv run black --check .
+        entry: uv run black --check
         language: system
-        types: [python]
-        pass_filenames: false
-        require_serial: true
+        types_or: [python, pyi]
       - id: ruff
-        name: ruff (check)
-        entry: uv run ruff check .
+        name: ruff check
+        entry: uv run ruff check
         language: system
-        types: [python]
-        pass_filenames: false
-        require_serial: true
+        types_or: [python, pyi]

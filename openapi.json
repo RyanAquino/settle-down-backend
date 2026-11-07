@@ -1,0 +1,492 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "NinjaAPI",
+    "version": "1.0.0",
+    "description": ""
+  },
+  "paths": {
+    "/api/v1/receipts/receipt-items/": {
+      "post": {
+        "operationId": "backend_api_api_post_ocr_receipt",
+        "summary": "Post Ocr Receipt",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OCRReceiptPostOut"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "properties": {
+                  "file": {
+                    "format": "binary",
+                    "title": "File",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "file"
+                ],
+                "title": "FileParams",
+                "type": "object"
+              }
+            }
+          },
+          "required": true
+        },
+        "security": [
+          {
+            "GlobalAuth": []
+          }
+        ]
+      }
+    },
+    "/api/v1/settle-up/groups/": {
+      "get": {
+        "operationId": "backend_api_settleup_api_get_settle_up_groups",
+        "summary": "Get Settle Up Groups",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "limit",
+            "schema": {
+              "default": 100,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            },
+            "required": false
+          },
+          {
+            "in": "query",
+            "name": "offset",
+            "schema": {
+              "default": 0,
+              "minimum": 0,
+              "title": "Offset",
+              "type": "integer"
+            },
+            "required": false
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PagedSettleUpGroupSchema"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "GlobalAuth": []
+          }
+        ]
+      }
+    },
+    "/api/v1/settle-up/users/": {
+      "get": {
+        "operationId": "backend_api_settleup_api_get_settle_up_users",
+        "summary": "Get Settle Up Users",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "group_id",
+            "schema": {
+              "title": "Group Id",
+              "type": "string"
+            },
+            "required": true
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "schema": {
+              "default": 100,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            },
+            "required": false
+          },
+          {
+            "in": "query",
+            "name": "offset",
+            "schema": {
+              "default": 0,
+              "minimum": 0,
+              "title": "Offset",
+              "type": "integer"
+            },
+            "required": false
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PagedSettleUpUserSchema"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "GlobalAuth": []
+          }
+        ]
+      }
+    },
+    "/api/v1/settle-up/transactions/": {
+      "post": {
+        "operationId": "backend_api_settleup_api_post_settle_up_create_transaction",
+        "summary": "Post Settle Up Create Transaction",
+        "parameters": [],
+        "responses": {
+          "204": {
+            "description": "No Content"
+          }
+        },
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TransactionPostIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "security": [
+          {
+            "GlobalAuth": []
+          }
+        ]
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "OCRReceiptPostOut": {
+        "properties": {
+          "receipt_items": {
+            "items": {
+              "$ref": "#/components/schemas/ReceiptItemData"
+            },
+            "title": "Receipt Items",
+            "type": "array"
+          },
+          "en_shop_name": {
+            "description": "The name of the shop in the receipt in english",
+            "title": "En Shop Name",
+            "type": "string"
+          },
+          "jp_shop_name": {
+            "description": "The name of the shop in the receipt in japanese",
+            "title": "Jp Shop Name",
+            "type": "string"
+          },
+          "tax_percentage": {
+            "default": 0,
+            "description": "The tax percentage of the receipt if applicable",
+            "title": "Tax Percentage",
+            "type": "number"
+          },
+          "total_amount": {
+            "default": 0,
+            "description": "The total amount of all items in the receipt",
+            "title": "Total Amount",
+            "type": "number"
+          },
+          "receipt_date": {
+            "description": "The date of the receipt",
+            "format": "date-time",
+            "title": "Receipt Date",
+            "type": "string"
+          },
+          "receipt_image_url": {
+            "description": "The url of the uploaded receipt image",
+            "title": "Receipt Image Url",
+            "type": "string"
+          }
+        },
+        "required": [
+          "receipt_items",
+          "en_shop_name",
+          "jp_shop_name",
+          "receipt_image_url"
+        ],
+        "title": "OCRReceiptPostOut",
+        "type": "object"
+      },
+      "ReceiptItemData": {
+        "description": "Receipt Item model for each item in the receipt.",
+        "properties": {
+          "english_name": {
+            "description": "The name of the purchased item in english in the receipt",
+            "title": "English Name",
+            "type": "string"
+          },
+          "japanese_name": {
+            "description": "The name of the purchased item in Japanese in the receipt",
+            "title": "Japanese Name",
+            "type": "string"
+          },
+          "item_order": {
+            "description": "The order of the items in the receipt",
+            "title": "Item Order",
+            "type": "integer"
+          },
+          "cost": {
+            "description": "The final line price for this item after any discount, for the quantity shown",
+            "title": "Cost",
+            "type": "number"
+          },
+          "quantity": {
+            "description": "The quantity of the purchased item",
+            "title": "Quantity",
+            "type": "integer"
+          },
+          "discount": {
+            "default": 0,
+            "description": "The discount amount applied to this line, in the receipt's currency (0 if none). Already subtracted from cost",
+            "title": "Discount",
+            "type": "number"
+          }
+        },
+        "required": [
+          "english_name",
+          "japanese_name",
+          "item_order",
+          "cost",
+          "quantity"
+        ],
+        "title": "ReceiptItemData",
+        "type": "object"
+      },
+      "Input": {
+        "properties": {
+          "limit": {
+            "default": 100,
+            "minimum": 1,
+            "title": "Limit",
+            "type": "integer"
+          },
+          "offset": {
+            "default": 0,
+            "minimum": 0,
+            "title": "Offset",
+            "type": "integer"
+          }
+        },
+        "title": "Input",
+        "type": "object"
+      },
+      "PagedSettleUpGroupSchema": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/SettleUpGroupSchema"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "count": {
+            "title": "Count",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "items",
+          "count"
+        ],
+        "title": "PagedSettleUpGroupSchema",
+        "type": "object"
+      },
+      "SettleUpGroupSchema": {
+        "properties": {
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "currency": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Currency"
+          }
+        },
+        "required": [
+          "name",
+          "id"
+        ],
+        "title": "SettleUpGroupSchema",
+        "type": "object"
+      },
+      "PagedSettleUpUserSchema": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/SettleUpUserSchema"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "count": {
+            "title": "Count",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "items",
+          "count"
+        ],
+        "title": "PagedSettleUpUserSchema",
+        "type": "object"
+      },
+      "SettleUpUserSchema": {
+        "properties": {
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "name",
+          "id"
+        ],
+        "title": "SettleUpUserSchema",
+        "type": "object"
+      },
+      "TransactionPostIn": {
+        "properties": {
+          "purpose": {
+            "title": "Purpose",
+            "type": "string"
+          },
+          "paying_member_id": {
+            "title": "Paying Member Id",
+            "type": "string"
+          },
+          "tax_percentage": {
+            "title": "Tax Percentage",
+            "type": "integer"
+          },
+          "total_amount": {
+            "title": "Total Amount",
+            "type": "number"
+          },
+          "user_receipt_items": {
+            "items": {
+              "$ref": "#/components/schemas/UserTransactionSchema"
+            },
+            "title": "User Receipt Items",
+            "type": "array"
+          },
+          "split_receipt_items": {
+            "description": "Split receipt items",
+            "items": {
+              "type": "number"
+            },
+            "title": "Split Receipt Items",
+            "type": "array"
+          },
+          "group_id": {
+            "title": "Group Id",
+            "type": "string"
+          },
+          "receipt_date": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The date of the receipt in Japan timezone",
+            "title": "Receipt Date"
+          },
+          "receipt_image_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The url of the uploaded receipt image",
+            "title": "Receipt Image Url"
+          }
+        },
+        "required": [
+          "purpose",
+          "paying_member_id",
+          "tax_percentage",
+          "total_amount",
+          "user_receipt_items",
+          "group_id"
+        ],
+        "title": "TransactionPostIn",
+        "type": "object"
+      },
+      "UserTransactionSchema": {
+        "properties": {
+          "member_id": {
+            "title": "Member Id",
+            "type": "string"
+          },
+          "cost": {
+            "title": "Cost",
+            "type": "number"
+          }
+        },
+        "required": [
+          "member_id",
+          "cost"
+        ],
+        "title": "UserTransactionSchema",
+        "type": "object"
+      }
+    },
+    "securitySchemes": {
+      "GlobalAuth": {
+        "type": "http",
+        "scheme": "bearer"
+      }
+    }
+  },
+  "servers": []
+}
