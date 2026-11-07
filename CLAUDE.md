@@ -123,5 +123,5 @@ pytest is configured in `pyproject.toml` (`DJANGO_SETTINGS_MODULE=settledown.set
 - `security.yml` (PRs, `main`, weekly): pip-audit, zizmor, CodeQL.
 - `nightly.yml`: latest-dependencies canary, 5,000-example property tests, mutation tests (any survivor fails), live OCR test (secrets-gated).
 
-Actions are pinned to commit SHAs and images to digests (zizmor enforces this).
+Actions are pinned to exact version tags (e.g. `actions/checkout@v7.0.1`, allowed by `.github/zizmor.yml`) and container images to digests; Dependabot keeps both current.
 Keep the lint/format commands here, in CI, in `.pre-commit-config.yaml`, and in the README in sync.

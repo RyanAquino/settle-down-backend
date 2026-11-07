@@ -408,7 +408,7 @@ uv run pre-commit run --all-files
 ## Continuous integration
 
 All workflows live in `.github/workflows/`.
-Actions are pinned to commit SHAs and container images to digests, and every job gets read-only repository access unless it needs more.
+Actions are pinned to exact version tags and container images to digests, Dependabot keeps both current, and every job gets read-only repository access unless it needs more.
 
 | Workflow | Trigger | Jobs |
 | --- | --- | --- |

@@ -1,0 +1,8 @@
+# zizmor configuration (https://docs.zizmor.sh/configuration/).
+rules:
+  unpinned-uses:
+    config:
+      policies:
+        # Actions are pinned to exact version tags (e.g. actions/checkout@v7.0.1)
+        # rather than commit SHAs, for readability. Dependabot keeps them current.
+        "*": ref-pin
