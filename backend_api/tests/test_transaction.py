@@ -199,8 +199,51 @@ class TestTransaction:
             "Member 2": pytest.approx(10.05 + 0.80, abs=1e-9),
         }
 
+    def test_member_items_are_summed_per_member(self, settle_up_client):
+        """
+        Test a member's items are added together, with 10% tax excluded in total.
+
+        Scenario:
+            Member 1 - paid two items, 100 and 50
+            Member 2 - paid an item for 50
+            total of 220 = 150 + 15 tax + 50 + 5 tax
+        """
+        result = settle_up_client._compute_transaction(
+            receipt_items=[
+                UserTransactionSchema(member_id="Member 1", cost=100),
+                UserTransactionSchema(member_id="Member 1", cost=50),
+                UserTransactionSchema(member_id="Member 2", cost=50),
+            ],
+            tax_percentage=10,
+            total_amount=220,
+            group_id="Group A",
+        )
+        assert result == {"Member 1": 165.0, "Member 2": 55.0}
+
+    def test_every_shared_item_counts_toward_the_tax_check(self, settle_up_client):
+        """
+        Test every shared item and its tax is included when deciding whether tax is excluded.
+
+        Scenario:
+            Member 1 - paid an item for 100
+            Two items, 100 and 200, which are shared among 2 members
+            total of 440 = 100 + 10 tax + 100 + 10 tax + 200 + 20 tax
+        """
+        result = settle_up_client._compute_transaction(
+            receipt_items=[UserTransactionSchema(member_id="Member 1", cost=100)],
+            tax_percentage=10,
+            total_amount=440,
+            split_receipt_items=[100, 200],  # 150 per member + 15 tax = 165
+            group_id="Group A",
+        )
+        assert result == {"Member 1": 275.0, "Member 2": 165.0}
+
     def test_compute_weights_reduces_to_smallest_integer_ratio(self, settle_up_client):
         """_compute_weights divides scaled shares by their GCD."""
         assert settle_up_client._compute_weights((150.0, 50.0)) == [3, 1]
         assert settle_up_client._compute_weights((100.0, 100.0)) == [1, 1]
         assert settle_up_client._compute_weights((36, 64)) == [9, 16]
+
+    def test_compute_weights_keeps_cent_precision(self, settle_up_client):
+        """_compute_weights scales shares to cents, so the ratio is exact to the cent."""
+        assert settle_up_client._compute_weights((12.34, 5.66)) == [617, 283]

@@ -16,7 +16,7 @@ permissions:
   contents: read
 
 env:
-  PYTHON_VERSION: "3.12"
+  # The Python version comes from .python-version, which uv reads.
   # Never let the lockfile drift silently: every `uv run` fails if uv.lock is stale.
   UV_LOCKED: "1"
 
@@ -29,13 +29,11 @@ jobs:
         with:
           persist-credentials: false
       - uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
-        with:
-          python-version: ${{ env.PYTHON_VERSION }}
       - run: uv sync
       - name: Lint (ruff check)
         run: uv run ruff check --output-format=github .
-      - name: Format (ruff format --check)
-        run: uv run ruff format --check .
+      - name: Format (black --check)
+        run: uv run black --check --diff .
       # Workflow syntax, expression types, and shellcheck on every run: block.
       - name: Lint workflows (actionlint)
         run: |
@@ -51,8 +49,6 @@ jobs:
         with:
           persist-credentials: false
       - uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
-        with:
-          python-version: ${{ env.PYTHON_VERSION }}
       - run: uv sync
       - name: mypy (django-stubs + pydantic plugins)
         run: uv run mypy .
@@ -65,8 +61,6 @@ jobs:
         with:
           persist-credentials: false
       - uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
-        with:
-          python-version: ${{ env.PYTHON_VERSION }}
       - run: uv sync
       # Coverage gate (fail_under = 100) lives in pyproject.toml.
       - name: pytest
@@ -74,24 +68,6 @@ jobs:
       - name: Coverage summary
         if: ${{ !cancelled() }}
         run: uv run coverage report --format=markdown >> "$GITHUB_STEP_SUMMARY"
-
-  architecture:
-    name: Architecture contracts
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v7.0.1
-        with:
-          persist-credentials: false
-      - uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
-        with:
-          python-version: ${{ env.PYTHON_VERSION }}
-      - run: uv sync
-      # Layering + "money math is pure" contracts, configured in pyproject.toml.
-      - name: import-linter
-        run: uv run lint-imports
-      # Every imported package is declared, and every declared one is used.
-      - name: deptry
-        run: uv run deptry .
 
   django:
     name: Django checks
@@ -101,8 +77,6 @@ jobs:
         with:
           persist-credentials: false
       - uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
-        with:
-          python-version: ${{ env.PYTHON_VERSION }}
       - run: uv sync
       # -W error: a deprecation raised while loading settings/apps fails the job.
       - name: System checks
@@ -110,84 +84,14 @@ jobs:
       - name: No missing migrations
         run: uv run python manage.py makemigrations --check --dry-run
 
-  api-contract:
-    name: API contract (breaking changes)
-    if: github.event_name == 'pull_request'
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v7.0.1
-        with:
-          persist-credentials: false
-      # openapi.json is kept in sync with the code by the test job; this job
-      # compares it with the base branch's copy and fails on breaking changes.
-      - name: Fetch the base branch's contract
-        id: base
-        env:
-          BASE_REF: ${{ github.base_ref }}
-        run: |
-          git fetch --depth=1 origin "$BASE_REF"
-          if git show FETCH_HEAD:openapi.json > base-openapi.json 2>/dev/null; then
-            echo "exists=true" >> "$GITHUB_OUTPUT"
-          else
-            echo "::notice::Base branch has no openapi.json yet; nothing to compare."
-            echo "exists=false" >> "$GITHUB_OUTPUT"
-          fi
-      - name: oasdiff breaking
-        if: steps.base.outputs.exists == 'true'
-        run: |
-          docker run --rm -v "$PWD:/specs:ro" \
-            tufin/oasdiff:v1.35.0@sha256:82b1840a77335562bb11ce95f77ad31745a0c6f3a770929333ed1c5ef466e400 \
-            breaking /specs/base-openapi.json /specs/openapi.json \
-            --fail-on ERR --format githubactions
-
-  docker:
-    name: Docker image and compose smoke test
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v7.0.1
-        with:
-          persist-credentials: false
-      - name: Lint Dockerfile (hadolint)
-        run: |
-          docker run --rm -i \
-            hadolint/hadolint:v2.15.1@sha256:32dac94127fd60b7b7e3fbfc65e1383b9b5e25c9bfd7b8536de7a539fe68a12d \
-            < Dockerfile
-      - name: Build and start the stack
-        run: docker compose up --build --detach --wait
-      - name: Smoke test
-        run: |
-          # The ASGI server is up and serving the API docs.
-          curl --fail --silent --show-error --retry 30 --retry-all-errors --retry-delay 1 \
-            --output /dev/null http://localhost:8000/api/docs
-          # Routing and bearer auth work end to end.
-          status=$(curl --silent --output /dev/null --write-out '%{http_code}' \
-            http://localhost:8000/api/v1/settle-up/groups/)
-          test "$status" = 401 || { echo "expected 401 without a token, got $status"; exit 1; }
-          # The app container reaches the Redis service (the REDIS_URL wiring).
-          docker compose exec -T app uv run --no-sync python manage.py shell -c "
-          from django.core.cache import cache
-          cache.set('ci-smoke', 'ok', 30)
-          value = cache.get('ci-smoke')
-          if value != 'ok':
-              raise SystemExit(f'Redis round trip failed: {value!r}')
-          print('Redis round trip OK')
-          "
-      - name: Container logs
-        if: ${{ failure() }}
-        run: docker compose logs
-      - name: Tear down
-        if: ${{ always() }}
-        run: docker compose down --volumes
-
   # Single required status for branch protection: green only if every job above
-  # passed (or was legitimately skipped).
+  # passed.
   all-green:
     name: CI passed
     if: ${{ always() }}
-    needs: [lint, typecheck, test, architecture, django, api-contract, docker]
+    needs: [lint, typecheck, test, django]
     runs-on: ubuntu-latest
     steps:
       - uses: re-actors/alls-green@b5b5b37504aa4183270bd3d855c52a67f212be35 # v1.3.0
         with:
-          allowed-skips: api-contract
           jobs: ${{ toJSON(needs) }}

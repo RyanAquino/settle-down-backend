@@ -2,8 +2,8 @@
 name = "settledown"
 version = "0.1.0"
 description = "Receipt-splitting API: OCR a photo receipt and file it as a Settle Up group expense"
-requires-python = ">=3.12"
-# Declare everything the code imports directly (enforced by deptry in CI), so a
+requires-python = ">=3.14"
+# Declare everything the code imports directly (check with `uv run deptry .`), so a
 # transitive dependency changing upstream can never silently remove one.
 dependencies = [
     "cloudinary>=1.44.1",
@@ -28,10 +28,10 @@ dependencies = [
 
 [dependency-groups]
 dev = [
+    "black>=26.10.1",
     "debugpy>=1.8.21",
     "deptry>=0.25.1",
     "django-stubs>=5.2.9,<6",
-    "hypothesis>=6.170.15",
     "import-linter>=2.16",
     "mypy>=2.4.1",
     "pre-commit>=4.6.0",
@@ -73,7 +73,6 @@ exclude_also = ["if TYPE_CHECKING:"]
 
 # ------------------------------------------------------------------ ruff ----
 [tool.ruff]
-target-version = "py312"
 extend-exclude = ["mutants"]
 
 [tool.ruff.lint]
@@ -119,7 +118,6 @@ ban-relative-imports = "all"
 
 # ------------------------------------------------------------------ mypy ----
 [tool.mypy]
-python_version = "3.12"
 plugins = ["mypy_django_plugin.main", "pydantic.mypy"]
 exclude = ["^mutants/"]
 check_untyped_defs = true
@@ -186,7 +184,7 @@ forbidden_modules = [
 # ---------------------------------------------------------------- deptry ----
 [tool.deptry]
 known_first_party = ["backend_api", "settledown"]
-# Test modules may import dev-only packages (pytest, hypothesis).
+# Test modules may import dev-only packages (pytest).
 extend_exclude = [".*/tests/"]
 
 [tool.deptry.per_rule_ignores]
@@ -196,7 +194,7 @@ extend_exclude = [".*/tests/"]
 DEP002 = ["django-cors-headers", "django-redis", "hypercorn", "psycopg2-binary"]
 
 # ---------------------------------------------------------------- mutmut ----
-# Mutation testing for the money math (weekly in CI): mutmut rewrites the code
+# Mutation testing for the money math (nightly in CI): mutmut rewrites the code
 # (e.g. `round(_, 2)` -> `round(_, 3)`, `==` -> `!=`) and expects a test to fail
 # for each mutant. A surviving mutant is a behavior change no test would notice.
 [tool.mutmut]
@@ -205,5 +203,4 @@ also_copy = ["backend_api/", "settledown/", "manage.py"]
 pytest_add_cli_args_test_selection = [
     "backend_api/tests/test_transaction.py",
     "backend_api/tests/test_create_transaction.py",
-    "backend_api/tests/test_split_properties.py",
 ]

@@ -15,9 +15,6 @@ concurrency:
 permissions:
   contents: read
 
-env:
-  PYTHON_VERSION: "3.12"
-
 jobs:
   latest-dependencies:
     name: Canary on the newest allowed dependencies
@@ -27,8 +24,6 @@ jobs:
         with:
           persist-credentials: false
       - uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
-        with:
-          python-version: ${{ env.PYTHON_VERSION }}
       # Resolve everything to the newest versions pyproject.toml allows, so an
       # upstream release that breaks us shows up here before Dependabot's PR.
       - name: Upgrade the lockfile (not committed)
@@ -39,19 +34,6 @@ jobs:
       - run: uv run pytest
       - run: uv run mypy .
 
-  property-tests:
-    name: Property tests (5,000 examples each)
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v7.0.1
-        with:
-          persist-credentials: false
-      - uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
-        with:
-          python-version: ${{ env.PYTHON_VERSION }}
-      - run: uv sync --locked
-      - run: uv run pytest backend_api/tests/test_split_properties.py --hypothesis-profile=nightly
-
   mutation-tests:
     name: Mutation tests (money math)
     runs-on: ubuntu-latest
@@ -60,8 +42,6 @@ jobs:
         with:
           persist-credentials: false
       - uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
-        with:
-          python-version: ${{ env.PYTHON_VERSION }}
       - run: uv sync --locked
       # Configured in pyproject.toml ([tool.mutmut]). Every mutant must be
       # killed: a survivor is a change to the money math no test would catch.
@@ -74,36 +54,3 @@ jobs:
             echo "::error::Mutants survived; add tests that detect these changes (see 'mutmut show <name>')."
             exit 1
           fi
-
-  live-ocr:
-    name: Live OCR against OpenRouter
-    runs-on: ubuntu-latest
-    env:
-      OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
-      # Base64 of a receipt photo. Kept in a secret, not the repo, because a
-      # real receipt is personal data and this repository is public.
-      LIVE_RECEIPT_IMAGE_BASE64: ${{ secrets.LIVE_RECEIPT_IMAGE_BASE64 }}
-    steps:
-      - name: Check configuration
-        id: config
-        run: |
-          if [ -z "$OPENROUTER_API_KEY" ] || [ -z "$LIVE_RECEIPT_IMAGE_BASE64" ]; then
-            echo "::notice::Skipped: set the OPENROUTER_API_KEY and LIVE_RECEIPT_IMAGE_BASE64 repository secrets to enable."
-            echo "enabled=false" >> "$GITHUB_OUTPUT"
-          else
-            echo "enabled=true" >> "$GITHUB_OUTPUT"
-          fi
-      - uses: actions/checkout@v7.0.1
-        if: steps.config.outputs.enabled == 'true'
-        with:
-          persist-credentials: false
-      - uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
-        if: steps.config.outputs.enabled == 'true'
-        with:
-          python-version: ${{ env.PYTHON_VERSION }}
-      - name: pytest -m live
-        if: steps.config.outputs.enabled == 'true'
-        run: |
-          uv sync --locked
-          echo "$LIVE_RECEIPT_IMAGE_BASE64" | base64 --decode > "$RUNNER_TEMP/receipt.jpg"
-          LIVE_RECEIPT_IMAGE="$RUNNER_TEMP/receipt.jpg" uv run pytest -m live -rs

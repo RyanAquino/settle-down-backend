@@ -86,7 +86,7 @@ settledown exposes a [Django Ninja](https://django-ninja.dev/) API under the `/a
 
 ## Prerequisites
 
-- **Python 3.12 or higher**
+- **Python 3.14**, pinned in `.python-version`; `uv sync` downloads it if it is missing
 - **[uv](https://docs.astral.sh/uv/)** package manager
 - **Redis** (the cache backend is required for token and metadata caching)
 - Credentials for the external services used by the app: an LLM API key, Cloudinary credentials, and Settle Up / Firebase credentials (see [Environment variables](#environment-variables))
@@ -103,7 +103,7 @@ uv sync
 # Runtime dependencies only (production parity)
 uv sync --no-dev
 
-# Install the git pre-commit hook (ruff format + ruff check on every commit)
+# Install the git pre-commit hook (black + ruff check on every commit)
 uv run pre-commit install
 ```
 
@@ -155,7 +155,6 @@ docker compose up --build
 ```
 
 Inside a container, `localhost` is the container itself, so `docker-compose.yml` points the app at the `redis` service with `REDIS_URL: redis://redis:6379/1`.
-CI builds this exact stack on every pull request and smoke-tests it (see [Continuous integration](#continuous-integration)).
 
 To build and run the image manually (without Compose), you must create a network and a Redis container, then connect the app to it:
 
@@ -354,7 +353,6 @@ The suite is strict on purpose:
 
 - **Warnings are errors** (`filterwarnings = ["error"]`), so a deprecation fails the PR that introduces it instead of the upgrade that removes the API.
 - **HTTP tests go through the real stack**: `test_http_api.py` uses Django's test `Client`, so requests traverse the URL conf, middleware and bearer auth.
-- **Property-based tests** (`test_split_properties.py`, [Hypothesis](https://hypothesis.readthedocs.io)) check the splitting math across thousands of generated receipts.
 - **Live tests are opt-in.** Tests marked `live` call paid APIs and are deselected by default; run them with `uv run pytest -m live` (see `test_ocr_agent_live.py` for the keys and receipt image they need).
 
 ### API contract snapshot
@@ -379,7 +377,7 @@ uv run --with mutmut mutmut results   # lists surviving mutants; empty means all
 ### Code quality checks
 
 ```bash
-uv run ruff format .        # format (drop-in replacement for black)
+uv run black .              # format
 uv run ruff check --fix .   # lint, including security (bandit) and Django rules
 uv run mypy .               # type check with the django-stubs and pydantic plugins
 uv run lint-imports         # architecture contracts (layers; money math stays pure)
@@ -391,7 +389,7 @@ The import contracts encode the layering `settledown` (composition root) > route
 
 ### Pre-commit hooks
 
-A [pre-commit](https://pre-commit.com) config (`.pre-commit-config.yaml`) runs `ruff format --check` and `ruff check` on the staged Python files before each commit.
+A [pre-commit](https://pre-commit.com) config (`.pre-commit-config.yaml`) runs `black --check` and `ruff check` on the staged Python files before each commit.
 The hooks shell out to `uv run`, so they reuse the versions pinned in the dev dependency group.
 Install the git hook once per clone:
 
@@ -413,9 +411,9 @@ Dependabot keeps all of them current, and every job gets read-only repository ac
 
 | Workflow | Trigger | Jobs |
 | --- | --- | --- |
-| `ci.yml` | Every PR and push to `main` | **Lint** (ruff, actionlint), **Type check** (mypy), **Test** (pytest with the 100% coverage gate), **Architecture** (import-linter, deptry), **Django checks** (`check`, `makemigrations --check`), **API contract** (`oasdiff breaking` against the base branch's `openapi.json`), **Docker** (hadolint, then build the Compose stack and smoke-test the API and the Redis connection), and **CI passed**, which aggregates them all |
-| `security.yml` | Every PR, push to `main`, and weekly | **pip-audit** over the hash-locked dependency set, **zizmor** over the workflows, **CodeQL** for Python and Actions |
-| `nightly.yml` | Daily | **Latest-dependencies canary** (`uv lock --upgrade` + tests), **property tests** at 5,000 examples, **mutation tests** on the money math, and the **live OCR test** (needs the `OPENROUTER_API_KEY` and `LIVE_RECEIPT_IMAGE_BASE64` secrets) |
+| `ci.yml` | Every PR and push to `main` | **Lint** (ruff, actionlint), **Type check** (mypy), **Test** (pytest with the 100% coverage gate), **Django checks** (`check`, `makemigrations --check`), and **CI passed**, which aggregates them all |
+| `security.yml` | Every PR, push to `main`, and weekly | **pip-audit** over the hash-locked dependency set |
+| `nightly.yml` | Daily | **Latest-dependencies canary** (`uv lock --upgrade` + tests) and **mutation tests** on the money math |
 
 Dependabot (`.github/dependabot.yml`) opens weekly, grouped updates for Python packages, GitHub Actions and Docker images, skipping releases younger than seven days.
 Make **CI passed** the required status check for `main` in the branch protection settings: it is green only when every CI job passed.

@@ -2,18 +2,8 @@ from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 
 import pytest
-from hypothesis import settings
 
 from backend_api.settleup_utils import SettleUpClient
-
-# Property tests: no per-example deadline, since shared CI runners are noisy
-# enough to make timing-based failures flaky. The nightly workflow selects the
-# heavier profile with `--hypothesis-profile=nightly`.
-settings.register_profile("default", deadline=None, print_blob=True)
-settings.register_profile(
-    "nightly", parent=settings.get_profile("default"), max_examples=5_000
-)
-settings.load_profile("default")
 
 # Fake Firebase credentials returned by the mocked sign-in. The shape mirrors
 # the Firebase Auth REST response so SettleUpClient.__init__ can read

@@ -15,7 +15,8 @@ The SQLite DB exists only for Django's built-in apps and is untouched by the tes
 
 ## Commands
 
-Everything runs through **uv** (Python 3.12+, see `uv.lock`).
+Everything runs through **uv** on Python 3.14, pinned in `.python-version` (uv installs it if missing).
+Python 3.15 needs Django 6.1, so the project stays on 3.14 while it is on the Django 5.2 LTS line.
 `uv run` re-locks and syncs automatically when `pyproject.toml` changes.
 
 ```bash
@@ -30,7 +31,7 @@ uv run pytest --cov                       # with the 100% line+branch coverage g
 uv run pytest backend_api/tests/test_transaction.py::TestTransaction::test_fractional_tax_balances_to_total
 uv run pytest -m live                     # opt-in: real OpenRouter call (needs a valid key + receipt image)
 
-uv run ruff format .                      # format (CI: --check)
+uv run black .                            # format (CI: --check)
 uv run ruff check .                       # lint, incl. bandit (S), Django (DJ), async (ASYNC) rules
 uv run mypy .                             # types (django-stubs + pydantic plugins)
 uv run lint-imports                       # architecture contracts
@@ -86,7 +87,10 @@ Understand both before touching anything financial:
 - Transactions are filed in the group's currency, but there is **no FX conversion**: a receipt denominated differently from its group is recorded unconverted.
   Because the group document is cached ~24h, a currency changed in Settle Up stays stale here for up to a day, and that staleness affects money, not just display.
 
-### Enforced architecture (`[tool.importlinter]` in `pyproject.toml`)
+### Architecture contracts (`[tool.importlinter]` in `pyproject.toml`)
+
+CI does not run these; check them locally with `uv run lint-imports` before changing imports between modules.
+
 
 Layers, top to bottom: `settledown.urls` > `settledown.api` > routers (`backend_api.api`, `settleup_api`) > integrations (`settleup_utils`, `ocr`, `services`) > `schemas` > `utils`, `firebase_auth` > `dto`.
 A layer may only import layers below it, and siblings may not import each other.
@@ -97,7 +101,7 @@ A layer may only import layers below it, and siblings may not import each other.
 - **Every warning is an error in tests** (`filterwarnings = ["error"]`).
   A dependency upgrade that deprecates something we call fails the suite; fix the call (as with ninja's `Status(204, None)`), don't blanket-ignore.
 - **Coverage must stay at 100%** (lines and branches, `fail_under = 100`), so new code ships with tests.
-- **`openapi.json` is a committed snapshot.** Any change to routes or schemas fails `test_openapi_schema.py` until you regenerate it, and CI runs `oasdiff breaking` against the base branch's copy.
+- **`openapi.json` is a committed snapshot.** Any change to routes or schemas fails `test_openapi_schema.py` until you regenerate it, so every contract change shows up in the diff.
 - **Pydantic `Field` defaults must be keywords** (`Field(default=None, ...)`): mypy reads ninja schemas through `dataclass_transform`, which ignores a positional default and then reports the field as required.
 - **Upgrade pydantic-ai and openai together.** `pydantic-ai-slim<2` targets the openai 2.x SDK, so `openai` is capped `<3`.
 - **`LLM7ChatModel._process_response` is marked `@override`**, so mypy fails if pydantic-ai renames the hook it patches.
@@ -110,7 +114,6 @@ The fixture routes the mocked `requests.get` **by URL**: `groups/{id}.json` reso
 The mocked members endpoint returns exactly **Member 1 and Member 2** (`GROUP_MEMBERS`), and the split-related assertions in `test_transaction.py` depend on that two-member group.
 
 - `test_transaction.py` exercises `_compute_transaction()` across tax-included / tax-excluded / shared-split / fractional-tax / cent-rounding scenarios.
-- `test_split_properties.py` (Hypothesis) checks invariants on whole-yen receipts where every tax term is an exact integer, which keeps the float `==` heuristic out of the way.
 - `test_http_api.py` drives the API through Django's test `Client` (URL conf, middleware, auth) with the outbound boundaries mocked.
 
 pytest is configured in `pyproject.toml` (`DJANGO_SETTINGS_MODULE=settledown.settings`, `testpaths`, `-m "not live"`, strict markers/config).
@@ -119,10 +122,12 @@ pytest is configured in `pyproject.toml` (`DJANGO_SETTINGS_MODULE=settledown.set
 
 `.github/workflows/` has three workflows (details in README → Continuous integration):
 
-- `ci.yml` (PRs and `main`): lint (ruff, actionlint), mypy, pytest with the coverage gate, import-linter + deptry, Django `check` + `makemigrations --check`, `oasdiff` API-contract diff, and Docker (hadolint, then a Compose smoke test that checks the API and the Redis connection). The `CI passed` job aggregates them for branch protection.
-- `security.yml` (PRs, `main`, weekly): pip-audit, zizmor, CodeQL.
-- `nightly.yml`: latest-dependencies canary, 5,000-example property tests, mutation tests (any survivor fails), live OCR test (secrets-gated).
+- `ci.yml` (PRs and `main`): lint (ruff, actionlint), mypy, pytest with the coverage gate, Django `check` + `makemigrations --check`.
+  The `CI passed` job aggregates them for branch protection.
+- `security.yml` (PRs, `main`, weekly): pip-audit.
+- `nightly.yml`: latest-dependencies canary, mutation tests (any survivor fails).
+  Live OCR tests (`-m live`) run only locally.
 
-GitHub's own actions (`actions/*`, `github/*`) are pinned to exact version tags; third-party actions are pinned to a commit SHA with the version in a trailing comment, because tags can be moved (zizmor and CodeQL enforce this split, see `.github/zizmor.yml`).
+GitHub's own actions (`actions/*`, `github/*`) are pinned to exact version tags; third-party actions are pinned to a commit SHA with the version in a trailing comment, because tags can be moved.
 Container images are pinned to digests, and Dependabot keeps all of them current.
 Keep the lint/format commands here, in CI, in `.pre-commit-config.yaml`, and in the README in sync.

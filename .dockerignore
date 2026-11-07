@@ -20,7 +20,6 @@ __pycache__/
 .ruff_cache/
 .mypy_cache/
 .pytest_cache/
-.hypothesis/
 .import_linter_cache/
 .coverage
 mutants/

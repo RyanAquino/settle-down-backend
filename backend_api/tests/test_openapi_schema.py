@@ -1,8 +1,7 @@
 """The committed OpenAPI document must match what the code serves.
 
 ``openapi.json`` is the API contract the client builds against. Committing it
-makes every contract change visible in review, and CI runs ``oasdiff`` against
-the base branch's copy to flag breaking changes.
+makes every contract change visible in review.
 
 After an intentional API change, regenerate it with:
 
