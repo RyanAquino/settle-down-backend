@@ -22,7 +22,6 @@ __pycache__/
 .pytest_cache/
 .import_linter_cache/
 .coverage
-mutants/
 
 # Local databases & media
 db.sqlite3

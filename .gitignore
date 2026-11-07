@@ -275,4 +275,3 @@ pyrightconfig.json
 .idea/
 # Quality tooling caches and outputs
 .import_linter_cache/
-mutants/

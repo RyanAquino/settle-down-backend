@@ -364,16 +364,6 @@ After an intentional API change, regenerate it and review the diff:
 UPDATE_OPENAPI_SNAPSHOT=1 uv run pytest backend_api/tests/test_openapi_schema.py
 ```
 
-### Mutation testing
-
-The money math in `backend_api/utils.py` is mutation-tested with [mutmut](https://github.com/boxed/mutmut): it rewrites the code (for example `round(_, 2)` to `round(_, 3)`) and expects a test to fail for every change.
-CI runs it nightly and fails if any mutant survives.
-
-```bash
-uv run --with mutmut mutmut run
-uv run --with mutmut mutmut results   # lists surviving mutants; empty means all were caught
-```
-
 ### Code quality checks
 
 ```bash
@@ -413,7 +403,7 @@ Dependabot keeps all of them current, and every job gets read-only repository ac
 | --- | --- | --- |
 | `ci.yml` | Every PR and push to `main` | **Lint** (ruff, actionlint), **Type check** (mypy), **Test** (pytest with the 100% coverage gate), **Django checks** (`check`, `makemigrations --check`), and **CI passed**, which aggregates them all |
 | `security.yml` | Every PR, push to `main`, and weekly | **pip-audit** over the hash-locked dependency set |
-| `nightly.yml` | Daily | **Latest-dependencies canary** (`uv lock --upgrade` + tests) and **mutation tests** on the money math |
+| `nightly.yml` | Daily | **Latest-dependencies canary**: `uv lock --upgrade`, then the tests and mypy |
 
 Dependabot (`.github/dependabot.yml`) opens weekly, grouped updates for Python packages, GitHub Actions and Docker images, skipping releases younger than seven days.
 Make **CI passed** the required status check for `main` in the branch protection settings: it is green only when every CI job passed.

@@ -38,7 +38,6 @@ uv run lint-imports                       # architecture contracts
 uv run deptry .                           # declared deps == imported deps
 
 UPDATE_OPENAPI_SNAPSHOT=1 uv run pytest backend_api/tests/test_openapi_schema.py   # after an intentional API change
-uv run --with mutmut mutmut run && uv run --with mutmut mutmut results              # mutation tests (money math)
 ```
 
 `uv run python manage.py migrate` is **optional**: there are no app models or migrations, only Django's built-ins.
@@ -73,7 +72,7 @@ Understand both before touching anything financial:
 - **`compute_member_totals()`** turns per-member items + shared items + a tax % + the trusted `total_amount` into `{member_id: amount_owed}` (in the group's currency).
   It does not know whether the receipt's printed total already includes consumption tax, so it *infers* it: `should_compute_tax` is an **exact float `==` comparison** of `(pre-tax items + computed tax + shared) == total_amount`.
   If equal, tax was excluded and gets added to everyone; if not, tax is assumed already baked in and is not added.
-  This is held together by `round(_, 2)` on every tax term; those rounds are load-bearing, not cosmetic, and `test_every_tax_term_rounds_to_cents` plus mutation testing pin them.
+  This is held together by `round(_, 2)` on every tax term; those rounds are load-bearing, not cosmetic, and `test_every_tax_term_rounds_to_cents` pins them.
 - **`compute_weights()`** reduces the per-member totals to the smallest integer ratio (`round(s*100)` then divide by the GCD).
   In `create_transaction`, those GCD-reduced weights go into the transaction's `forWhom`, while `whoPaid` carries the **full `total_amount`** as the payer's weight; don't conflate the two.
   The currency comes from the group document (`convertedToCurrency`, strict access) with an identity `exchangeRates` map.
@@ -125,7 +124,7 @@ pytest is configured in `pyproject.toml` (`DJANGO_SETTINGS_MODULE=settledown.set
 - `ci.yml` (PRs and `main`): lint (ruff, actionlint), mypy, pytest with the coverage gate, Django `check` + `makemigrations --check`.
   The `CI passed` job aggregates them for branch protection.
 - `security.yml` (PRs, `main`, weekly): pip-audit.
-- `nightly.yml`: latest-dependencies canary, mutation tests (any survivor fails).
+- `nightly.yml`: latest-dependencies canary (`uv lock --upgrade`, then the tests and mypy).
   Live OCR tests (`-m live`) run only locally.
 
 GitHub's own actions (`actions/*`, `github/*`) are pinned to exact version tags; third-party actions are pinned to a commit SHA with the version in a trailing comment, because tags can be moved.

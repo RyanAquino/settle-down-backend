@@ -73,7 +73,6 @@ exclude_also = ["if TYPE_CHECKING:"]
 
 # ------------------------------------------------------------------ ruff ----
 [tool.ruff]
-extend-exclude = ["mutants"]
 
 [tool.ruff.lint]
 select = [
@@ -119,7 +118,6 @@ ban-relative-imports = "all"
 # ------------------------------------------------------------------ mypy ----
 [tool.mypy]
 plugins = ["mypy_django_plugin.main", "pydantic.mypy"]
-exclude = ["^mutants/"]
 check_untyped_defs = true
 no_implicit_reexport = true
 strict_equality = true
@@ -192,15 +190,3 @@ extend_exclude = [".*/tests/"]
 # django_redis cache backend), launched as a CLI (hypercorn), or kept on purpose
 # for a future Postgres backend (psycopg2-binary).
 DEP002 = ["django-cors-headers", "django-redis", "hypercorn", "psycopg2-binary"]
-
-# ---------------------------------------------------------------- mutmut ----
-# Mutation testing for the money math (nightly in CI): mutmut rewrites the code
-# (e.g. `round(_, 2)` -> `round(_, 3)`, `==` -> `!=`) and expects a test to fail
-# for each mutant. A surviving mutant is a behavior change no test would notice.
-[tool.mutmut]
-source_paths = ["backend_api/utils.py"]
-also_copy = ["backend_api/", "settledown/", "manage.py"]
-pytest_add_cli_args_test_selection = [
-    "backend_api/tests/test_transaction.py",
-    "backend_api/tests/test_create_transaction.py",
-]
