@@ -24,10 +24,12 @@ class MemberCost(Protocol):
     """One itemized cost charged to one member (e.g. ``UserTransactionSchema``)."""
 
     @property
-    def member_id(self) -> str: ...
+    def member_id(self) -> str:
+        """The Settle Up member the cost is charged to."""
 
     @property
-    def cost(self) -> float: ...
+    def cost(self) -> float:
+        """The line cost, in the group's currency."""
 
 
 def compute_weights(shares: Sequence[float]) -> list[int]:
