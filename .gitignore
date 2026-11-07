@@ -273,5 +273,7 @@ pyrightconfig.json
 # End of https://www.toptal.com/developers/gitignore/api/django,python
 
 .idea/
+# Machine-specific: the PyCharm MCP server URL (its port differs per machine).
+.mcp.json
 # Quality tooling caches and outputs
 .import_linter_cache/
