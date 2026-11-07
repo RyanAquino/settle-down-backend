@@ -18,6 +18,7 @@ class TestGetGroup:
         mock_settleup.requests.get.assert_called_with(
             f"{settings.SETTLE_UP_BASE_URL}/groups/group-1.json",
             params=settle_up_client.auth_params,
+            timeout=settings.UPSTREAM_HTTP_TIMEOUT,
         )
         mock_settleup.cache.set.assert_called_with(
             "group-1_settle_up_group", timeout=86500, value=group

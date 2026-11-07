@@ -40,8 +40,10 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
 # Vendor the same pinned uv so the app can still start "the uv way" (uv run).
 COPY --from=ghcr.io/astral-sh/uv:0.9 /uv /usr/local/bin/uv
 
-# Run as an unprivileged user.
-RUN useradd --create-home --uid 1000 appuser
+# Run as an unprivileged user with fixed IDs, so the numeric USER below lets
+# orchestrators verify runAsNonRoot without resolving names.
+RUN groupadd --gid 1000 appuser \
+    && useradd --create-home --uid 1000 --gid 1000 appuser
 
 WORKDIR /app
 
@@ -50,7 +52,7 @@ WORKDIR /app
 # source must be present at /app and started via `uv run` for it to be importable.
 COPY --from=builder --chown=appuser:appuser /app /app
 
-USER appuser
+USER 1000:1000
 
 # Django's default port (docker-compose maps 8000:8000).
 EXPOSE 8000

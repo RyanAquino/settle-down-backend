@@ -2,11 +2,22 @@ from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 
 import pytest
+from hypothesis import settings
 
 from backend_api.settleup_utils import SettleUpClient
 
+# Property tests: no per-example deadline, since shared CI runners are noisy
+# enough to make timing-based failures flaky. The nightly workflow selects the
+# heavier profile with `--hypothesis-profile=nightly`.
+settings.register_profile("default", deadline=None, print_blob=True)
+settings.register_profile(
+    "nightly", parent=settings.get_profile("default"), max_examples=5_000
+)
+settings.load_profile("default")
+
 # Fake Firebase credentials returned by the mocked sign-in. The shape mirrors
-# what pyrebase returns so SettleUpClient.__init__ can read `localId`/`idToken`.
+# the Firebase Auth REST response so SettleUpClient.__init__ can read
+# `localId`/`idToken`.
 FAKE_CREDS = {"localId": "test-local-id", "idToken": "test-id-token"}
 
 # Stubbed SettleUp REST response for `members/{group_id}.json`. The transaction
@@ -26,9 +37,10 @@ GROUP_INFO = {"name": "Group A", "convertedToCurrency": "JPY"}
 def mock_settleup():
     """Patch every external boundary ``SettleUpClient`` touches.
 
-    - Firebase auth (``pyrebase``): the real ``sign_in_with_email_and_password``
-      login is replaced with fake credentials, so constructing a
-      ``SettleUpClient`` performs **no real login**.
+    - Firebase auth (``firebase_auth``): the real
+      ``sign_in_with_email_and_password`` login is replaced with fake
+      credentials, so constructing a ``SettleUpClient`` performs **no real
+      login**.
     - The SettleUp REST API (``requests``) used to fetch group members. Requests
       for ``groups/{group_id}.json`` are routed to the yielded ``group_json``
       (a copy of ``GROUP_INFO``), which tests mutate **in place** to simulate a
@@ -41,16 +53,15 @@ def mock_settleup():
     different member set) before exercising the client.
     """
     with (
-        patch("backend_api.settleup_utils.pyrebase") as mock_pyrebase,
+        patch("backend_api.settleup_utils.firebase_auth") as mock_firebase_auth,
         patch("backend_api.settleup_utils.requests") as mock_requests,
         patch("backend_api.settleup_utils.cache") as mock_cache,
     ):
         # Force a cache miss so the (mocked) login and REST paths actually run.
         mock_cache.get.return_value = None
 
-        # No real Firebase login — return fake credentials.
-        auth = mock_pyrebase.initialize_app.return_value.auth.return_value
-        auth.sign_in_with_email_and_password.return_value = FAKE_CREDS
+        # No real Firebase login - return fake credentials.
+        mock_firebase_auth.sign_in_with_email_and_password.return_value = FAKE_CREDS
 
         # Stub the SettleUp REST members endpoint.
         mock_requests.get.return_value.json.return_value = GROUP_MEMBERS
@@ -72,7 +83,7 @@ def mock_settleup():
         mock_requests.get.side_effect = _route_get
 
         yield SimpleNamespace(
-            pyrebase=mock_pyrebase,
+            firebase_auth=mock_firebase_auth,
             requests=mock_requests,
             cache=mock_cache,
             group_json=group_json,

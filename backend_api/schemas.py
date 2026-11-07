@@ -34,10 +34,10 @@ class TransactionPostIn(Schema):
     )
     group_id: str
     receipt_date: datetime | None = Field(
-        None, description="The date of the receipt in Japan timezone"
+        default=None, description="The date of the receipt in Japan timezone"
     )
     receipt_image_url: str | None = Field(
-        None, description="The url of the uploaded receipt image"
+        default=None, description="The url of the uploaded receipt image"
     )
 
 
@@ -50,10 +50,10 @@ class OCRReceiptPostOut(Schema):
         ..., description="The name of the shop in the receipt in japanese"
     )
     tax_percentage: float = Field(
-        0, description="The tax percentage of the receipt if applicable"
+        default=0, description="The tax percentage of the receipt if applicable"
     )
     total_amount: float = Field(
-        0, description="The total amount of all items in the receipt"
+        default=0, description="The total amount of all items in the receipt"
     )
     receipt_date: datetime = Field(
         default_factory=timezone.now, description="The date of the receipt"

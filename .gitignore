@@ -273,3 +273,6 @@ pyrightconfig.json
 # End of https://www.toptal.com/developers/gitignore/api/django,python
 
 .idea/
+# Quality tooling caches and outputs
+.import_linter_cache/
+mutants/

@@ -1,3 +1,5 @@
+import pytest
+
 from backend_api.schemas import UserTransactionSchema
 
 
@@ -170,6 +172,32 @@ class TestTransaction:
             group_id="Group A",
         )
         assert result == {"Member 1": 151.25, "Member 2": 46.75}
+
+    def test_every_tax_term_rounds_to_cents(self, settle_up_client):
+        """
+        Each tax term is rounded to 2 decimals before the total is compared.
+
+        At 8%, every term here has a third decimal (0.804, 1.608, 0.804), so
+        rounding to any other precision changes the outcome: the tax-exclusive
+        total no longer matches (tax would silently be dropped) or a member's
+        share drifts. Pins the load-bearing round(_, 2) calls.
+
+        Scenario:
+            Member 1 - paid an item for 10.05
+            Another item for 20.10 which is shared among 2 members
+            total of 32.56 = 10.05 + 0.80 tax + 20.10 + 1.61 tax
+        """
+        result = settle_up_client._compute_transaction(
+            receipt_items=[UserTransactionSchema(member_id="Member 1", cost=10.05)],
+            tax_percentage=8,
+            total_amount=32.56,
+            split_receipt_items=[20.10],
+            group_id="Group A",
+        )
+        assert result == {
+            "Member 1": pytest.approx(10.05 + 0.80 + 10.05 + 0.80, abs=1e-9),
+            "Member 2": pytest.approx(10.05 + 0.80, abs=1e-9),
+        }
 
     def test_compute_weights_reduces_to_smallest_integer_ratio(self, settle_up_client):
         """_compute_weights divides scaled shares by their GCD."""
