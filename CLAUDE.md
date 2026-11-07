@@ -127,6 +127,6 @@ pytest is configured in `pyproject.toml` (`DJANGO_SETTINGS_MODULE=settledown.set
 - `nightly.yml`: latest-dependencies canary (`uv lock --upgrade`, then the tests and mypy).
   Live OCR tests (`-m live`) run only locally.
 
-GitHub's own actions (`actions/*`, `github/*`) are pinned to exact version tags; third-party actions are pinned to a commit SHA with the version in a trailing comment, because tags can be moved.
+All actions are pinned to exact version tags (e.g. `astral-sh/setup-uv@v10.3.3`), not commit SHAs.
 Container images are pinned to digests, and Dependabot keeps all of them current.
 Keep the lint/format commands here, in CI, in `.pre-commit-config.yaml`, and in the README in sync.
