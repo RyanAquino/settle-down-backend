@@ -1,52 +1,53 @@
 import time
 from datetime import timezone
+from urllib.parse import quote
 
-import pyrebase
 import requests
 from django.conf import settings
-from django.core.cache import cache
+from ninja.errors import HttpError
 
 from backend_api.dto.settleup import SettleUpGroup
 from backend_api.utils import compute_member_totals, compute_weights
 from backend_api.schemas import TransactionPostIn, UserTransactionSchema
 
 
+def group_key(value):
+    if not value or any(
+        char in ".#$[]/" or ord(char) < 32 or ord(char) == 127 for char in value
+    ):
+        raise HttpError(400, "Invalid group ID.")
+    return quote(value, safe="")
+
+
 class SettleUpClient:
-    def __init__(self):
-        firebase = pyrebase.initialize_app(settings.SETTLE_UP_CONFIG)
-        pb_auth = firebase.auth()
-        cache_key = f"{settings.SETTLE_UP_USER}_token"
+    def __init__(self, uid, token):
+        self.user_id = uid
+        self.auth_params = {"auth": token}
 
-        if v := cache.get(cache_key):
-            creds = v
-        else:
-            creds = pb_auth.sign_in_with_email_and_password(
-                settings.SETTLE_UP_USER,
-                settings.SETTLE_UP_PASSWORD,
+    def _read(self, path):
+        try:
+            response = requests.get(
+                f"{settings.SETTLE_UP_BASE_URL}/{path}.json",
+                params=self.auth_params,
+                timeout=15,
             )
-            cache.set(cache_key, timeout=3500, value=creds)
+        except requests.RequestException:
+            raise HttpError(502, "Settle Up is temporarily unavailable.") from None
+        self._check(response)
+        return response.json()
 
-        self.user_id = creds.get("localId")
-        self.auth_params = {"auth": creds.get("idToken")}
+    @staticmethod
+    def _check(response):
+        if response.status_code in (401, 403):
+            raise HttpError(403, "Settle Up denied access.")
+        if not response.ok:
+            raise HttpError(502, "Settle Up could not complete the request.")
 
     def get_groups(self) -> list[SettleUpGroup]:
-        # v2: the cached value's shape changed (currency field added); entries
-        # pickled under the old key predate the attribute.
-        cache_key = "settle_up_groups_v2"
-
-        if v := cache.get(cache_key):
-            return v
-
-        groups = requests.get(
-            f"{settings.SETTLE_UP_BASE_URL}/userGroups/{self.user_id}.json",
-            params=self.auth_params,
-        )
-        groups = groups.json()
+        groups = self._read(f"userGroups/{self.user_id}") or {}
         groups_map = []
 
-        for group_id, metadata in groups.items():
-            # Via get_group so each document is individually cached too — a
-            # later create_transaction then gets a warm hit for its currency.
+        for group_id in groups:
             group = self.get_group(group_id)
             groups_map.append(
                 SettleUpGroup(
@@ -58,45 +59,20 @@ class SettleUpClient:
                 )
             )
         groups_map = groups_map[::-1]
-        cache.set(cache_key, timeout=86500, value=groups_map)
 
         return groups_map
 
     def get_group(self, group_id) -> dict | None:
-        """Fetch (and cache) the raw Settle Up group document.
+        """Fetch the raw Settle Up group document.
 
         Carries ``convertedToCurrency`` — the currency the group is configured
         in, which every transaction filed against it must use. Returns None for
         a nonexistent group (Firebase answers with null).
         """
-        cache_key = f"{group_id}_settle_up_group"
-
-        if v := cache.get(cache_key):
-            return v
-
-        group = requests.get(
-            f"{settings.SETTLE_UP_BASE_URL}/groups/{group_id}.json",
-            params=self.auth_params,
-        )
-        group = group.json()
-        # Firebase returns a truthy error body ({"error": ...}) on auth or
-        # permission failures; caching it would pin the failure for ~24h.
-        if isinstance(group, dict) and "name" in group:
-            cache.set(cache_key, timeout=86500, value=group)
-
-        return group
+        return self._read(f"groups/{group_key(group_id)}")
 
     def get_group_members_by_group(self, group_id):
-        cache_key = f"{group_id}_settle_up_users"
-
-        if v := cache.get(cache_key):
-            return v
-
-        members = requests.get(
-            f"{settings.SETTLE_UP_BASE_URL}/members/{group_id}.json",
-            params=self.auth_params,
-        )
-        members = members.json()
+        members = self._read(f"members/{group_key(group_id)}") or {}
         result = []
 
         for member_id, metadata in members.items():
@@ -107,8 +83,6 @@ class SettleUpClient:
                     "name": name,
                 }
             )
-
-        cache.set(cache_key, timeout=86500, value=result)
 
         return result
 
@@ -181,10 +155,15 @@ class SettleUpClient:
         if v := payload.receipt_image_url:
             transaction_payload["receiptUrl"] = v
 
-        response = requests.post(
-            f"{settings.SETTLE_UP_BASE_URL}/transactions/{payload.group_id}.json",
-            json=transaction_payload,
-            params=self.auth_params,
-        )
+        try:
+            response = requests.post(
+                f"{settings.SETTLE_UP_BASE_URL}/transactions/{group_key(payload.group_id)}.json",
+                json=transaction_payload,
+                params=self.auth_params,
+                timeout=15,
+            )
 
+        except requests.RequestException:
+            raise HttpError(502, "Settle Up is temporarily unavailable.") from None
+        self._check(response)
         return response.json()

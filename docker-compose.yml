@@ -3,12 +3,15 @@ services:
     image: redis:latest
     restart: always
     ports:
-      - "6379:6379"
+      - "127.0.0.1:6379:6379"
   app:
     build: .
     restart: always
     ports:
       - "8000:8000"
+    env_file:
+      - path: .env
+        required: false
     environment:
       REDIS_URL: redis://redis:6379/1
     depends_on:

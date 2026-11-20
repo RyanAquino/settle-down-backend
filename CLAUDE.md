@@ -31,16 +31,16 @@ uv run ruff check .                           # lint
 
 ## Architecture
 
-Request entry is `settledown/api.py`: one `NinjaAPI` protected by `GlobalAuth` (a `HttpBearer` that just compares the token to `settings.APP_AUTH`). It mounts two routers under `/api/`:
+Request entry is `settledown/api.py`. The accounts router handles sign-in, session details and sign-out. `SessionAuth` resolves the bearer to the requesting account in Redis and refreshes Firebase credentials when needed.
 
 - `/api/v1/receipts/receipt-items/` (`backend_api/api.py`) — **the OCR flow**. An async `pydantic-ai` `Agent` running `gpt-5-mini` reads an uploaded image with `output_type=ReceiptData`, so the LLM is forced to return a validated `ReceiptData` (items, EN/JP shop names, tax %, total, date) rather than free text. It has one tool, `translate_jp_to_en_text` (Google Translate). The original image is uploaded to Cloudinary, falling back to catbox.moe on any exception (`backend_api/services.py`). The model is wrapped by `backend_api/dto/llm7_override.py` (`LLM7ChatModel`), a parsing workaround — don't delete it as dead code.
 - `/api/v1/settle-up/...` (`backend_api/settleup_api.py`) — list groups, list members, and create a transaction. All delegate to `SettleUpClient`.
 
-Swagger UI is at `/api/docs/` (authorize with the `APP_AUTH` bearer token).
+Swagger UI is at `/api/docs/` (authorize with a device session bearer token).
 
 ### `SettleUpClient` is the core (`backend_api/settleup_utils.py`)
 
-Constructed fresh per request. `__init__` signs in to Firebase via `pyrebase` and caches the token in Redis (~3500s ≈ 58 min). `get_groups` / `get_group` / `get_group_members_by_group` hit the Settle Up REST API and cache results for ~24h (`timeout=86500`) — **so changes made in Settle Up won't appear until that cache expires.**
+Constructed per request with the authenticated Firebase UID and ID token. Group and member reads go to Settle Up with that identity.
 
 The money logic is two methods worth understanding before touching anything financial:
 
@@ -52,16 +52,15 @@ The money logic is two methods worth understanding before touching anything fina
 - Tax is a single scalar applied **all-or-nothing** — mixed rates (e.g. JP 8% food vs 10%) are not representable.
 - `total_amount` is **trusted input**, never validated; the OCR prompt merely asks the LLM to make items sum to it.
 - The float-`==` tax heuristic means a one-unit rounding drift can silently flip the entire tax decision. Be careful changing any rounding or the comparison.
-- Transactions are filed in the group's currency (`get_group` → `convertedToCurrency`), but there is **no FX conversion**: a receipt denominated differently from its group is recorded unconverted. Because the group document is cached ~24h, a currency changed in Settle Up stays stale here for up to a day — and that staleness now affects money, not just display.
+- Transactions are filed in the group's currency (`get_group` → `convertedToCurrency`), but there is **no FX conversion**: a receipt denominated differently from its group is recorded unconverted.
 
 ## Gotchas
 
-- **`docker compose up` ships a broken Redis config.** `docker-compose.yml` does not set `REDIS_URL`, and `settings.py` defaults it to `redis://localhost:6379/1`. Inside the `app` container `localhost` is the container itself, not the `redis` service, so every cache-backed (i.e. every Settle Up) endpoint fails — though the server still starts, because django-redis connects lazily. Fix: set `environment: REDIS_URL: redis://redis:6379/1` on the `app` service. See README → Running with Docker.
 - Image upload (`backend_api/services.py`) **swallows the Cloudinary exception** (only `print`s it) and silently falls back to catbox.moe.
 
 ## Testing
 
-`backend_api/tests/conftest.py` provides the `settle_up_client` fixture: a real `SettleUpClient` with `pyrebase`, `requests`, and `cache` all patched, so no login/network/Redis happens. The fixture routes the mocked `requests.get` **by URL**: `groups/{id}.json` resolves to a mutable `group_json` (default `GROUP_INFO`, currency JPY) that tests change in place to simulate another currency; every other URL falls through to the shared `return_value`. The mocked members endpoint returns exactly **Member 1 and Member 2** (`GROUP_MEMBERS`), and the split-related assertions in `test_transaction.py` depend on that two-member group. Tests exercise `_compute_transaction()` directly across tax-included / tax-excluded / shared-split / fractional-tax scenarios. pytest is configured in `pyproject.toml` (`DJANGO_SETTINGS_MODULE=settledown.settings`, `test_*.py`).
+`backend_api/tests/conftest.py` provides the `settle_up_client` fixture: a real `SettleUpClient` with the upstream HTTP client patched, so no login/network/Redis happens. The fixture routes the mocked `requests.get` **by URL**: `groups/{id}.json` resolves to a mutable `group_json` (default `GROUP_INFO`, currency JPY) that tests change in place to simulate another currency; every other URL falls through to the shared `return_value`. The mocked members endpoint returns exactly **Member 1 and Member 2** (`GROUP_MEMBERS`), and the split-related assertions in `test_transaction.py` depend on that two-member group. Tests exercise `_compute_transaction()` directly across tax-included / tax-excluded / shared-split / fractional-tax scenarios. pytest is configured in `pyproject.toml` (`DJANGO_SETTINGS_MODULE=settledown.settings`, `test_*.py`).
 
 ## CI
 
