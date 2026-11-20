@@ -2,7 +2,7 @@
 
 > Receipt-splitting backend that extracts expenses from photo receipts via OCR and files them into Settle Up groups with tax-aware cost apportionment.
 
-settledown is a Django REST API that turns a photo of a receipt into a settled group expense. It processes receipt images, extracts itemized costs via multimodal LLM analysis (with Japanese-to-English translation), and automatically creates transaction records in [Settle Up](https://settleup.io/). It handles group-based expense splitting with support for shared items, per-person itemization, and all-or-nothing tax computation, caching Settle Up group and member data in Redis to minimize Firebase API calls.
+settledown is a Django REST API that turns a photo of a receipt into a settled group expense. It processes receipt images, extracts itemized costs via multimodal LLM analysis (with Japanese-to-English translation), and automatically creates transaction records in [Settle Up](https://settleup.io/). It handles group-based expense splitting with support for shared items, per-person itemization, and all-or-nothing tax computation.
 
 ## License
 
@@ -15,13 +15,12 @@ This project does not currently include a LICENSE file. As such, it is **UNLICEN
 - Two-tier expense allocation: per-member itemization plus shared item splitting
 - Tax computation with floating-point equality verification against the declared total
 - Receipt image hosting via Cloudinary with a catbox.moe fallback
-- 24-hour Redis cache of Settle Up groups and group members
-- Firebase authentication for the Settle Up service account
+- Personal Settle Up sessions and per-account daily scan allowances
 - Transaction weight computation via GCD-based rational simplification
 
 ## Architecture
 
-settledown exposes a [Django Ninja](https://django-ninja.dev/) API under the `/api` prefix, composed of two routers: a receipts router (OCR extraction) and a settle-up router (groups, users, and transactions). The API delegates to external services for AI, translation, image hosting, group/member metadata, and caching. There is no application database — all state lives in Firebase (Settle Up), Redis, or the client.
+settledown exposes a [Django Ninja](https://django-ninja.dev/) API under the `/api` prefix, composed of account, receipt, and Settle Up routers. The API delegates to external services for AI, translation, image hosting, group/member metadata, and caching. There is no application database — all state lives in Firebase (Settle Up), Redis, or the client.
 
 ```
                          +-----------------------------+
@@ -63,10 +62,10 @@ settledown exposes a [Django Ninja](https://django-ninja.dev/) API under the `/a
 ### Flow 2 — Transaction Creation
 
 1. The client `POST`s the OCR results and member allocations to `POST /api/v1/settle-up/transactions/`.
-2. `SettleUpClient` initializes Firebase auth (token cached ~58 min via Redis).
+2. `SettleUpClient` uses the Firebase identity from the requesting device’s session.
 3. Per-member itemized costs are aggregated from the `user_receipt_items` list.
 4. Tax is added per member **only if** validation passes: `sum(member taxes + member items + shared taxes) == total_amount` (float equality — all-or-nothing).
-5. Shared items are split evenly across all group members (fetched from the Settle Up cache).
+5. Shared items are split evenly across all group members (fetched with the signed-in account).
 6. Integer weights are computed via GCD reduction on the final per-member totals.
 7. A single-item transaction is `POST`ed to Settle Up. `whoPaid` contains the full `total_amount` as the payer's weight, while `forWhom` contains the GCD-reduced per-member weights; `currencyCode` is the group's own currency, with an identity `exchangeRates` entry.
 8. Settle Up returns the transaction ID.
@@ -79,8 +78,8 @@ settledown exposes a [Django Ninja](https://django-ninja.dev/) API under the `/a
 | Django Ninja | Async REST framework with schema validation |
 | Pydantic | Data validation and serialization for OCR output and API schemas |
 | Pydantic AI | Agent framework wrapping OpenAI-compatible providers (OpenRouter, OpenAI/LLM7) for structured LLM output |
-| Pyrebase | Firebase Realtime Database client for the Settle Up API |
-| django-redis | Redis cache backend for tokens and metadata |
+| Requests | Firebase Auth and Realtime Database REST APIs |
+| django-redis | Redis cache backend for sessions, scan counters and retry results |
 | requests | HTTP client for the Settle Up REST API and image uploads |
 | cloudinary | Cloudinary Python SDK for image uploads |
 | googletrans | Google Translate wrapper for Japanese-to-English translation |
@@ -89,7 +88,7 @@ settledown exposes a [Django Ninja](https://django-ninja.dev/) API under the `/a
 
 - **Python 3.12 or higher**
 - **[uv](https://docs.astral.sh/uv/)** package manager
-- **Redis** (the cache backend is required for token and metadata caching)
+- **Redis** (the cache backend is required for session and scan accounting)
 - Credentials for the external services used by the app: an LLM API key, Cloudinary credentials, and Settle Up / Firebase credentials (see [Environment variables](#environment-variables))
 
 ## Getting Started
@@ -116,7 +115,7 @@ uv run pre-commit install
 
 ### Environment variables
 
-All variables are optional and default to an empty value unless noted otherwise.
+Configure the following values on the backend.
 
 | Variable | Required | Description | Default |
 | --- | --- | --- | --- |
@@ -125,13 +124,11 @@ All variables are optional and default to an empty value unless noted otherwise.
 | `OPENROUTER_MODEL` | No | Model id sent to OpenRouter for the OCR flow | `google/gemini-3-flash-preview` |
 | `CLOUDINARY_API_SECRET` | No | Cloudinary API secret for image management | _(empty)_ |
 | `CLOUDINARY_API_KEY` | No | Cloudinary API key for image management | _(empty)_ |
-| `SETTLE_UP_API_KEY` | No | API key for Settle Up Firebase authentication | _(empty)_ |
-| `SETTLE_UP_API_DOMAIN` | No | Domain for the Settle Up API Firebase auth domain and database URL | _(empty)_ |
-| `SETTLE_UP_API_NAMESPACE` | No | Firebase project namespace for storage bucket and project ID | _(empty)_ |
-| `SETTLE_UP_USER` | No | Username for Settle Up API authentication | _(empty)_ |
-| `SETTLE_UP_PASSWORD` | No | Password for Settle Up API authentication | _(empty)_ |
+| `SETTLE_UP_API_KEY` | Yes | API key for Settle Up Firebase authentication | _(empty)_ |
+| `SETTLE_UP_API_DOMAIN` | Yes | Domain for the Settle Up API Firebase auth domain and database URL | _(empty)_ |
+| `DAILY_SCAN_LIMIT` | No | Successful scans per account per day, resetting at midnight in Japan | `5` |
+| `SCAN_LIMIT_EXEMPT_EMAILS` | No | Comma-separated verified email addresses with unlimited scans | _(empty)_ |
 | `REDIS_URL` | No | Connection string for the Redis cache backend (django_redis) | `redis://localhost:6379/1` |
-| `APP_AUTH` | No | Application authentication token or secret (validated by the Bearer auth scheme) | _(empty)_ |
 
 ### Running locally
 
@@ -154,14 +151,7 @@ The simplest way to run the app together with Redis is Docker Compose:
 docker compose up --build
 ```
 
-> **Important:** Inside a container, `localhost` refers to the container itself, not the Redis service. The default `REDIS_URL` (`redis://localhost:6379/1`, from `settings.py`) will therefore fail to reach the `redis` container. The `docker-compose.yml` currently does **not** set a `REDIS_URL` override, so the app service must be configured to point at the `redis` service. Add the following to the `app` service in `docker-compose.yml`:
->
-> ```yaml
->   app:
->     # ...
->     environment:
->       REDIS_URL: redis://redis:6379/1
-> ```
+Compose reads the backend settings from `.env` and connects the app to the Redis service on its internal network.
 
 To build and run the image manually (without Compose), you must create a network and a Redis container, then connect the app to it:
 
@@ -175,13 +165,15 @@ docker run -p 8000:8000 --network settledown -e REDIS_URL=redis://redis:6379/1 s
 
 ## API Reference
 
-All endpoints are served under the `/api` prefix and require authentication. The API uses an HTTP Bearer scheme: the `GlobalAuth` class authenticates each request by comparing the supplied token against `settings.APP_AUTH`. Send the token in an `Authorization: Bearer <token>` header.
+Send a Settle Up email and password in a JSON body to `POST /api/v1/auth/sign-in/` over HTTPS. The response includes a device session `token`, the account email, `remaining` (null for exempt users) and `resets_at`. Send the session token in the Bearer header for subsequent calls. `GET /api/v1/auth/me/` returns the current scan balance. `POST /api/v1/auth/sign-out/` ends the device session.
+
+The backend refreshes the account's Firebase credentials in Redis. An inactive session expires after 90 days. Use a private Redis instance with persistence for session and quota continuity.
 
 Interactive Swagger UI is available at **`/api/docs/`**.
 
 ### `POST /api/v1/receipts/receipt-items/`
 
-Extract receipt items from an uploaded image using OCR via AI.
+Send a UUID in the `Idempotency-Key` header for each new scan and reuse it for retries of that image. A reconciled result counts once, including when the user discards it. The server retains results for retries for 48 hours. Failed or unreconciled reads do not consume allowance. HTTP 429 indicates that the daily allowance is exhausted. The account can still submit an expense.
 
 **Auth:** Bearer token required.
 
@@ -207,7 +199,8 @@ Extract receipt items from an uploaded image using OCR via AI.
 
 ```bash
 curl -X POST "http://localhost:8000/api/v1/receipts/receipt-items/" \
-  -H "Authorization: Bearer <APP_AUTH_TOKEN>" \
+  -H "Authorization: Bearer <SESSION_TOKEN>" \
+  -H "Idempotency-Key: <SCAN_UUID>" \
   -F "file=@receipt.jpg"
 ```
 
@@ -252,7 +245,7 @@ Retrieve the list of settle-up groups.
 
 ```bash
 curl -X GET "http://localhost:8000/api/v1/settle-up/groups/" \
-  -H "Authorization: Bearer <APP_AUTH_TOKEN>"
+  -H "Authorization: Bearer <SESSION_TOKEN>"
 ```
 
 ```json
@@ -285,7 +278,7 @@ Retrieve the users in a specific settle-up group.
 
 ```bash
 curl -X GET "http://localhost:8000/api/v1/settle-up/users/?group_id=group-abc123" \
-  -H "Authorization: Bearer <APP_AUTH_TOKEN>"
+  -H "Authorization: Bearer <SESSION_TOKEN>"
 ```
 
 ```json
@@ -321,7 +314,7 @@ Create a new settlement transaction. Transactions are filed in **the group's cur
 
 ```bash
 curl -X POST "http://localhost:8000/api/v1/settle-up/transactions/" \
-  -H "Authorization: Bearer <APP_AUTH_TOKEN>" \
+  -H "Authorization: Bearer <SESSION_TOKEN>" \
   -H "Content-Type: application/json" \
   -d '{
     "purpose": "Sample Mart",
@@ -341,7 +334,7 @@ curl -X POST "http://localhost:8000/api/v1/settle-up/transactions/" \
 
 ## Testing
 
-Tests mock every external boundary (`SettleUpClient` touches Firebase/pyrebase auth, the Settle Up REST API via `requests`, and the cache), so **no live Redis or network access is required**. The shared test fixture group has exactly two members: **Member 1** and **Member 2**.
+The account integration test runs when `TEST_REDIS_URL` points to a dedicated Redis database. It uses synthetic upstream services and exercises session refresh, cross-device quota accounting, and expense creation. The shared test fixture group has exactly two members: **Member 1** and **Member 2**.
 
 ```bash
 # Run the full test suite
@@ -389,7 +382,7 @@ settledown/
 ├── docker-compose.yml
 ├── settledown/                 # Django project
 │   ├── api.py                  # NinjaAPI instance, GlobalAuth, router registration
-│   ├── settings.py             # Settings (env vars, Redis cache, APP_AUTH)
+│   ├── settings.py             # Settings (env vars, Redis, auth and scan settings)
 │   ├── urls.py                 # /api/ -> NinjaAPI
 │   └── asgi.py                 # ASGI entrypoint (settledown.asgi:application)
 └── backend_api/
@@ -417,7 +410,6 @@ settledown/
 - **Tax is all-or-nothing:** it is computed only if `member_taxes + member_items + shared_tax == total_amount` (float equality).
 - **No FX conversion:** transactions are filed in the group's currency and receipt amounts are assumed to match it; a receipt in a different currency than its group is recorded unconverted.
 - **`total_amount` is trusted input:** there is no reconciliation if extracted items differ from the declared total.
-- **Settle Up metadata is cached ~24h** (~86,500s): group/member info may be stale until the cache expires.
 - **Shared items are split evenly** across all members; there are no per-member overrides.
 - **A receipt image is required for a transaction** (the URL field is optional, but the OCR flow always provides it).
 - **LLM errors raise `ModelRetry`;** translation failures retry with shorter text chunks.
