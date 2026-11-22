@@ -8,7 +8,7 @@ requires-python = ">=3.14"
 dependencies = [
     "cloudinary>=1.44.1",
     # Django 5.2 is the current LTS (supported until April 2028).
-    "django>=5.2.19,<6",
+    "django>=5.2.19,<7",
     "django-cors-headers>=4.8.0",
     "django-ninja>=1.7.3",
     "django-redis>=6.0.0",
