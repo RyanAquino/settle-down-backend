@@ -25,6 +25,16 @@ USERS_URL = "/api/v1/settle-up/users/"
 TRANSACTIONS_URL = "/api/v1/settle-up/transactions/"
 RECEIPT_URL = "/api/v1/receipts/receipt-items/"
 
+LUNCH = {
+    "purpose": "Lunch",
+    "paying_member_id": "Member 1",
+    "user_receipt_items": [
+        {"member_id": "Member 1", "cost": 1},
+        {"member_id": "Member 2", "cost": 2},
+    ],
+    "group_id": "group-1",
+}
+
 
 @pytest.fixture(autouse=True)
 def _app_token():
@@ -100,20 +110,17 @@ class TestSettleUpEndpoints:
 
         assert response.status_code == 422
 
-    def test_create_transaction_files_it_in_settle_up(self, client, mock_settleup):
+    @pytest.mark.parametrize(
+        ("tax_percentage", "total", "weights"),
+        [(10, 3.30, ["1", "2"]), (8.25, 3.25, ["108", "217"])],
+    )
+    def test_create_transaction_files_it_in_settle_up(
+        self, client, mock_settleup, tax_percentage, total, weights
+    ):
+        mock_settleup.group_json["convertedToCurrency"] = "USD"
         response = client.post(
             TRANSACTIONS_URL,
-            {
-                "purpose": "Lunch",
-                "paying_member_id": "Member 1",
-                "tax_percentage": 10,
-                "total_amount": 200.0,
-                "user_receipt_items": [
-                    {"member_id": "Member 1", "cost": 100},
-                    {"member_id": "Member 2", "cost": 100},
-                ],
-                "group_id": "group-1",
-            },
+            {**LUNCH, "tax_percentage": tax_percentage, "total_amount": total},
             content_type="application/json",
             **AUTH,
         )
@@ -122,8 +129,30 @@ class TestSettleUpEndpoints:
         assert response.content == b""
         body = mock_settleup.requests.post.call_args.kwargs["json"]
         assert body["purpose"] == "Lunch"
-        assert body["currencyCode"] == "JPY"
-        assert body["whoPaid"] == [{"memberId": "Member 1", "weight": "200.0"}]
+        assert body["currencyCode"] == "USD"
+        assert body["whoPaid"] == [{"memberId": "Member 1", "weight": str(total)}]
+        assert body["items"] == [
+            {
+                "amount": str(total),
+                "forWhom": [
+                    {"memberId": "Member 1", "weight": weights[0]},
+                    {"memberId": "Member 2", "weight": weights[1]},
+                ],
+            }
+        ]
+
+    @pytest.mark.parametrize("rate", ["not a rate", "NaN", "Infinity", "-Infinity"])
+    def test_create_transaction_rejects_invalid_tax(self, client, mock_settleup, rate):
+        response = client.post(
+            TRANSACTIONS_URL,
+            {**LUNCH, "tax_percentage": rate, "total_amount": 3},
+            content_type="application/json",
+            **AUTH,
+        )
+
+        assert response.status_code == 422
+        assert response.json()["detail"][0]["loc"][-1] == "tax_percentage"
+        mock_settleup.requests.post.assert_not_called()
 
     def test_create_transaction_validates_the_payload(self, client, mock_settleup):
         response = client.post(

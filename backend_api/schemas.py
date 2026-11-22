@@ -2,7 +2,7 @@ from datetime import datetime
 
 from django.utils import timezone
 from ninja import Schema
-from pydantic import Field
+from pydantic import Field, FiniteFloat
 
 from backend_api.dto.receipt_item import ReceiptItemData
 
@@ -26,7 +26,7 @@ class UserTransactionSchema(Schema):
 class TransactionPostIn(Schema):
     purpose: str
     paying_member_id: str
-    tax_percentage: int
+    tax_percentage: FiniteFloat
     total_amount: float
     user_receipt_items: list[UserTransactionSchema]
     split_receipt_items: list[float] = Field(

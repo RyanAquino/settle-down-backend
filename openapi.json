@@ -400,7 +400,7 @@
           },
           "tax_percentage": {
             "title": "Tax Percentage",
-            "type": "integer"
+            "type": "number"
           },
           "total_amount": {
             "title": "Total Amount",
