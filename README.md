@@ -301,7 +301,7 @@ Create a new settlement transaction. Transactions are filed in **the group's cur
 | --- | --- | --- |
 | `purpose` | `str` | Transaction purpose |
 | `paying_member_id` | `str` | ID of the member paying |
-| `tax_percentage` | `int` | Tax percentage |
+| `tax_percentage` | `float` | Finite tax percentage, such as `8.25` or `10` |
 | `total_amount` | `float` | Total transaction amount |
 | `user_receipt_items` | `list[UserTransactionSchema]` | Receipt items per user (each with `member_id: str`, `cost: float`) |
 | `split_receipt_items` | `list[float]` | Optional split items (defaults to an empty list) |
