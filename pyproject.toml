@@ -16,7 +16,7 @@ dependencies = [
     "hypercorn>=0.17.3",
     # Moves in lockstep with pydantic-ai: its 1.x line targets the openai 2.x SDK
     # (pydantic-ai 2.x is the one that requires openai>=3).
-    "openai>=2.29.0,<3",
+    "openai>=2.29.0,<4",
     "psycopg2-binary>=2.9.10",
     "pydantic>=2.11",
     # -slim with only the providers we use; the full `pydantic-ai` meta-package
