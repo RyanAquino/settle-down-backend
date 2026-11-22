@@ -397,7 +397,7 @@ uv run pre-commit run --all-files
 
 All workflows live in `.github/workflows/`.
 Actions are pinned to exact version tags (for example `astral-sh/setup-uv@v10.3.3`) and container images to digests.
-Dependabot keeps all of them current, and every job gets read-only repository access unless it needs more.
+Every job gets read-only repository access unless it needs more.
 
 | Workflow | Trigger | Jobs |
 | --- | --- | --- |
@@ -405,7 +405,6 @@ Dependabot keeps all of them current, and every job gets read-only repository ac
 | `security.yml` | Every PR, push to `main`, and weekly | **pip-audit** over the hash-locked dependency set |
 | `nightly.yml` | Daily | **Latest-dependencies canary**: `uv lock --upgrade`, then the tests and mypy |
 
-Dependabot (`.github/dependabot.yml`) opens weekly, grouped updates for Python packages, GitHub Actions and Docker images, skipping releases younger than seven days.
 Make **CI passed** the required status check for `main` in the branch protection settings: it is green only when every CI job passed.
 
 ## Project Structure
@@ -418,9 +417,7 @@ settledown/
 ├── openapi.json                # Committed API contract (kept in sync by a test)
 ├── Dockerfile
 ├── docker-compose.yml
-├── .github/
-│   ├── workflows/              # ci.yml, security.yml, nightly.yml
-│   └── dependabot.yml
+├── .github/workflows/           # ci.yml, security.yml, nightly.yml
 ├── settledown/                 # Django project
 │   ├── api.py                  # NinjaAPI instance, GlobalAuth, router registration
 │   ├── settings.py             # Settings (env vars, Redis cache, APP_AUTH)
