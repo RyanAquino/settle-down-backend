@@ -1,0 +1,35 @@
+name: Nightly
+
+# Slower or externally-dependent checks that should not gate every PR. GitHub
+# emails the workflow's owner when a scheduled run fails.
+on:
+  schedule:
+    - cron: "41 18 * * *" # 03:41 JST
+  workflow_dispatch:
+
+# Never run two nightly batches at once (e.g. a manual dispatch during the cron).
+concurrency:
+  group: ${{ github.workflow }}
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  latest-dependencies:
+    name: Canary on the newest allowed dependencies
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7.0.1
+        with:
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@v10.3.3
+      # Resolve everything to the newest versions pyproject.toml allows, so an
+      # upstream release that breaks us shows up here before Dependabot's PR.
+      - name: Upgrade the lockfile (not committed)
+        run: |
+          uv lock --upgrade
+          git diff --stat uv.lock
+      - run: uv sync
+      - run: uv run pytest
+      - run: uv run mypy .

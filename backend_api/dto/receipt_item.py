@@ -21,7 +21,7 @@ class ReceiptItemData(BaseModel):
     )
     quantity: int = Field(description="The quantity of the purchased item")
     discount: float = Field(
-        0,
+        default=0,
         description="The discount amount applied to this line, in the receipt's currency (0 if none). Already subtracted from cost",
     )
 
@@ -37,10 +37,10 @@ class ReceiptData(BaseModel):
         ..., description="The name of the shop in the receipt in japanese"
     )
     tax_percentage: float = Field(
-        0, description="The tax percentage in the receipt if applicable"
+        default=0, description="The tax percentage in the receipt if applicable"
     )
     total_amount: float = Field(
-        0, description="The total amount of all items stated in the receipt"
+        default=0, description="The total amount of all items stated in the receipt"
     )
     receipt_date: datetime = Field(
         default_factory=timezone.now, description="The date of the receipt"

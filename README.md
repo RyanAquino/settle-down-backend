@@ -39,8 +39,8 @@ settledown exposes a [Django Ninja](https://django-ninja.dev/) API under the `/a
           +--------------+        |         |         |    +---------------+
           v                       v         v         v                    v
    +-------------+      +-----------------+  |   +-----------+      +--------------+
-   | OpenAI      |      | Google Translate|  |   |  Redis    |      | Firebase /   |
-   | (GPT-5-mini)|      | (googletrans)   |  |   |  cache    |      | Settle Up    |
+   | OpenRouter  |      | Google Translate|  |   |  Redis    |      | Firebase /   |
+   | (Gemini)    |      | (googletrans)   |  |   |  cache    |      | Settle Up    |
    | Pydantic AI |      +-----------------+  |   +-----------+      | (REST)       |
    +-------------+                           |                      +--------------+
                                              v
@@ -56,14 +56,14 @@ settledown exposes a [Django Ninja](https://django-ninja.dev/) API under the `/a
 2. The endpoint initializes a Pydantic AI agent backed by the OpenRouter provider (default `google/gemini-3-flash-preview`, via `get_openrouter_receipt_agent`). An alternate OpenAI/LLM7 factory (`get_receipt_agent`) remains available.
 3. The agent receives a system prompt (extract items, bilingual shop names, tax %, total) plus the image.
 4. The agent calls a `translate_jp_to_en_text` tool as needed (the system prompt instructs it to always translate the text to English before processing, so the tool may be invoked unconditionally).
-5. The LLM validates that the extracted items sum to the declared total (all-or-nothing check).
+5. An output validator rejects grossly broken extractions (a non-positive total, no line items, a negative cost) and asks the model to retry. Items are deliberately not required to sum to the printed total, because mixed tax rates would make valid receipts fail.
 6. The receipt image is uploaded to Cloudinary; on failure, it is uploaded to catbox.moe.
 7. The API returns the receipt data: items list, shop names, tax %, total, date, and image URL.
 
 ### Flow 2 — Transaction Creation
 
 1. The client `POST`s the OCR results and member allocations to `POST /api/v1/settle-up/transactions/`.
-2. `SettleUpClient` initializes Firebase auth (token cached ~58 min via Redis).
+2. `SettleUpClient` signs in through the Firebase Auth REST API (`backend_api/firebase_auth.py`); the token is cached ~58 min in Redis.
 3. Per-member itemized costs are aggregated from the `user_receipt_items` list.
 4. Tax is added per member **only if** validation passes: `sum(member taxes + member items + shared taxes) == total_amount` (float equality — all-or-nothing).
 5. Shared items are split evenly across all group members (fetched from the Settle Up cache).
@@ -75,19 +75,18 @@ settledown exposes a [Django Ninja](https://django-ninja.dev/) API under the `/a
 
 | Component | Purpose |
 | --- | --- |
-| Django 5.2 | Web framework; Ninja router for async REST endpoints |
+| Django 5.2 LTS | Web framework; Ninja router for async REST endpoints |
 | Django Ninja | Async REST framework with schema validation |
 | Pydantic | Data validation and serialization for OCR output and API schemas |
-| Pydantic AI | Agent framework wrapping OpenAI-compatible providers (OpenRouter, OpenAI/LLM7) for structured LLM output |
-| Pyrebase | Firebase Realtime Database client for the Settle Up API |
+| Pydantic AI (`pydantic-ai-slim`) | Agent framework wrapping OpenAI-compatible providers (OpenRouter, OpenAI/LLM7) for structured LLM output |
 | django-redis | Redis cache backend for tokens and metadata |
-| requests | HTTP client for the Settle Up REST API and image uploads |
+| requests | HTTP client for Firebase Auth, the Settle Up REST API and image uploads |
 | cloudinary | Cloudinary Python SDK for image uploads |
 | googletrans | Google Translate wrapper for Japanese-to-English translation |
 
 ## Prerequisites
 
-- **Python 3.12 or higher**
+- **Python 3.14**, pinned in `.python-version`; `uv sync` downloads it if it is missing
 - **[uv](https://docs.astral.sh/uv/)** package manager
 - **Redis** (the cache backend is required for token and metadata caching)
 - Credentials for the external services used by the app: an LLM API key, Cloudinary credentials, and Settle Up / Firebase credentials (see [Environment variables](#environment-variables))
@@ -97,14 +96,14 @@ settledown exposes a [Django Ninja](https://django-ninja.dev/) API under the `/a
 ### Installation
 
 ```bash
-# Install all dependencies, including the dev group (pytest, black, ruff). uv installs
-# the dev dependency-group by default.
+# Install all dependencies, including the dev group (pytest, ruff, mypy, ...).
+# uv installs the dev dependency-group by default.
 uv sync
 
 # Runtime dependencies only (production parity)
 uv sync --no-dev
 
-# Install the git pre-commit hook (black + ruff checks on every commit)
+# Install the git pre-commit hook (black + ruff check on every commit)
 uv run pre-commit install
 ```
 
@@ -125,13 +124,14 @@ All variables are optional and default to an empty value unless noted otherwise.
 | `OPENROUTER_MODEL` | No | Model id sent to OpenRouter for the OCR flow | `google/gemini-3-flash-preview` |
 | `CLOUDINARY_API_SECRET` | No | Cloudinary API secret for image management | _(empty)_ |
 | `CLOUDINARY_API_KEY` | No | Cloudinary API key for image management | _(empty)_ |
-| `SETTLE_UP_API_KEY` | No | API key for Settle Up Firebase authentication | _(empty)_ |
-| `SETTLE_UP_API_DOMAIN` | No | Domain for the Settle Up API Firebase auth domain and database URL | _(empty)_ |
-| `SETTLE_UP_API_NAMESPACE` | No | Firebase project namespace for storage bucket and project ID | _(empty)_ |
+| `SETTLE_UP_API_KEY` | No | Firebase web API key used to sign the Settle Up account in (Firebase Auth REST) | _(empty)_ |
+| `SETTLE_UP_API_DOMAIN` | No | Host of Settle Up's Firebase Realtime Database (e.g. `settle-up-live.firebaseio.com`) | _(empty)_ |
 | `SETTLE_UP_USER` | No | Username for Settle Up API authentication | _(empty)_ |
 | `SETTLE_UP_PASSWORD` | No | Password for Settle Up API authentication | _(empty)_ |
+| `UPSTREAM_HTTP_TIMEOUT` | No | Seconds any single upstream HTTP call (Firebase, Settle Up, image hosts) may take | `30` |
 | `REDIS_URL` | No | Connection string for the Redis cache backend (django_redis) | `redis://localhost:6379/1` |
-| `APP_AUTH` | No | Application authentication token or secret (validated by the Bearer auth scheme) | _(empty)_ |
+| `APP_AUTH` | No | Bearer token clients must send; when unset, every request is rejected | _(empty)_ |
+| `DJANGO_SECRET_KEY` | Yes, in production | Django `SECRET_KEY`; the fallback is an insecure key meant only for local development | _(insecure dev key)_ |
 
 ### Running locally
 
@@ -154,14 +154,7 @@ The simplest way to run the app together with Redis is Docker Compose:
 docker compose up --build
 ```
 
-> **Important:** Inside a container, `localhost` refers to the container itself, not the Redis service. The default `REDIS_URL` (`redis://localhost:6379/1`, from `settings.py`) will therefore fail to reach the `redis` container. The `docker-compose.yml` currently does **not** set a `REDIS_URL` override, so the app service must be configured to point at the `redis` service. Add the following to the `app` service in `docker-compose.yml`:
->
-> ```yaml
->   app:
->     # ...
->     environment:
->       REDIS_URL: redis://redis:6379/1
-> ```
+Inside a container, `localhost` is the container itself, so `docker-compose.yml` points the app at the `redis` service with `REDIS_URL: redis://redis:6379/1`.
 
 To build and run the image manually (without Compose), you must create a network and a Redis container, then connect the app to it:
 
@@ -169,7 +162,7 @@ To build and run the image manually (without Compose), you must create a network
 docker build -t settledown .
 
 docker network create settledown
-docker run -d --name redis --network settledown redis:latest
+docker run -d --name redis --network settledown redis:8
 docker run -p 8000:8000 --network settledown -e REDIS_URL=redis://redis:6379/1 settledown
 ```
 
@@ -177,7 +170,8 @@ docker run -p 8000:8000 --network settledown -e REDIS_URL=redis://redis:6379/1 s
 
 All endpoints are served under the `/api` prefix and require authentication. The API uses an HTTP Bearer scheme: the `GlobalAuth` class authenticates each request by comparing the supplied token against `settings.APP_AUTH`. Send the token in an `Authorization: Bearer <token>` header.
 
-Interactive Swagger UI is available at **`/api/docs/`**.
+Interactive Swagger UI is available at **`/api/docs`** and the OpenAPI document at `/api/openapi.json`.
+The same document is committed as [`openapi.json`](openapi.json), so every API contract change shows up in review.
 
 ### `POST /api/v1/receipts/receipt-items/`
 
@@ -341,52 +335,92 @@ curl -X POST "http://localhost:8000/api/v1/settle-up/transactions/" \
 
 ## Testing
 
-Tests mock every external boundary (`SettleUpClient` touches Firebase/pyrebase auth, the Settle Up REST API via `requests`, and the cache), so **no live Redis or network access is required**. The shared test fixture group has exactly two members: **Member 1** and **Member 2**.
+Tests mock every external boundary (Firebase Auth, the Settle Up REST API via `requests`, the cache, the OCR agent and the image hosts), so **no live Redis or network access is required**.
+The shared test fixture group has exactly two members: **Member 1** and **Member 2**.
 
 ```bash
 # Run the full test suite
 uv run pytest
 
+# With the coverage gate CI enforces (100% of lines and branches)
+uv run pytest --cov
+
 # Run a single test module
 uv run pytest backend_api/tests/test_transaction.py
 ```
 
-### Linting and formatting
+The suite is strict on purpose:
+
+- **Warnings are errors** (`filterwarnings = ["error"]`), so a deprecation fails the PR that introduces it instead of the upgrade that removes the API.
+- **HTTP tests go through the real stack**: `test_http_api.py` uses Django's test `Client`, so requests traverse the URL conf, middleware and bearer auth.
+- **Live tests are opt-in.** Tests marked `live` call paid APIs and are deselected by default; run them with `uv run pytest -m live` (see `test_ocr_agent_live.py` for the keys and receipt image they need).
+
+### API contract snapshot
+
+`openapi.json` must match what the code serves; a test fails when it is stale.
+After an intentional API change, regenerate it and review the diff:
 
 ```bash
-uv run black .
-uv run ruff check .
-uv run ruff check --fix .
+UPDATE_OPENAPI_SNAPSHOT=1 uv run pytest backend_api/tests/test_openapi_schema.py
 ```
+
+### Code quality checks
+
+```bash
+uv run black .              # format
+uv run ruff check --fix .   # lint, including security (bandit) and Django rules
+uv run mypy .               # type check with the django-stubs and pydantic plugins
+uv run lint-imports         # architecture contracts (layers; money math stays pure)
+uv run deptry .             # every import is a declared dependency, and vice versa
+```
+
+The rule sets and contracts live in `pyproject.toml`.
+The import contracts encode the layering `settledown` (composition root) > routers > integrations (`settleup_utils`, `ocr`, `services`) > `schemas` > domain math (`utils`) > `dto`, and forbid `backend_api.utils` from importing Django, ninja, HTTP clients or SDKs.
 
 ### Pre-commit hooks
 
-A [pre-commit](https://pre-commit.com) config (`.pre-commit-config.yaml`) runs the
-same checks as CI — `black --check` and `ruff check` over the repo — before each
-commit, blocking the commit if either fails. The hooks shell out to `uv run`, so
-they reuse the versions pinned in the dev dependency group (no separate version to
-keep in sync). Install the git hook once per clone:
+A [pre-commit](https://pre-commit.com) config (`.pre-commit-config.yaml`) runs `black --check` and `ruff check` on the staged Python files before each commit.
+The hooks shell out to `uv run`, so they reuse the versions pinned in the dev dependency group.
+Install the git hook once per clone:
 
 ```bash
 uv run pre-commit install
 ```
 
-After that, the checks run automatically on `git commit`. To run them against the
-whole tree on demand:
+To run them against every tracked file, as the CI lint job does:
 
 ```bash
 uv run pre-commit run --all-files
 ```
+
+## Continuous integration
+
+All workflows live in `.github/workflows/`.
+Actions are pinned to exact version tags (for example `astral-sh/setup-uv@v10.3.3`) and container images to digests.
+Dependabot keeps all of them current, and every job gets read-only repository access unless it needs more.
+
+| Workflow | Trigger | Jobs |
+| --- | --- | --- |
+| `ci.yml` | Every PR and push to `main` | **Lint** (ruff, actionlint), **Type check** (mypy), **Test** (pytest with the 100% coverage gate), **Django checks** (`check`, `makemigrations --check`), and **CI passed**, which aggregates them all |
+| `security.yml` | Every PR, push to `main`, and weekly | **pip-audit** over the hash-locked dependency set |
+| `nightly.yml` | Daily | **Latest-dependencies canary**: `uv lock --upgrade`, then the tests and mypy |
+
+Dependabot (`.github/dependabot.yml`) opens weekly, grouped updates for Python packages, GitHub Actions and Docker images, skipping releases younger than seven days.
+Make **CI passed** the required status check for `main` in the branch protection settings: it is green only when every CI job passed.
 
 ## Project Structure
 
 ```
 settledown/
 ├── manage.py
-├── pyproject.toml
+├── pyproject.toml              # Dependencies and every tool's configuration
 ├── uv.lock
+├── openapi.json                # Committed API contract (kept in sync by a test)
 ├── Dockerfile
 ├── docker-compose.yml
+├── .github/
+│   ├── workflows/              # ci.yml, security.yml, nightly.yml
+│   └── dependabot.yml
 ├── settledown/                 # Django project
 │   ├── api.py                  # NinjaAPI instance, GlobalAuth, router registration
 │   ├── settings.py             # Settings (env vars, Redis cache, APP_AUTH)
@@ -395,25 +429,27 @@ settledown/
 └── backend_api/
     ├── api.py                  # Receipts router: POST /receipt-items/ (OCR)
     ├── settleup_api.py         # Settle-up router: groups, users, transactions
-    ├── settleup_utils.py       # SettleUpClient: Firebase auth, transaction build
-    ├── serializer.py           # Request/response schemas
+    ├── settleup_utils.py       # SettleUpClient: Settle Up REST calls, caching, transaction build
+    ├── firebase_auth.py        # Firebase Auth REST sign-in
+    ├── utils.py                # Pure receipt-splitting math (tax inference, weights)
+    ├── ocr.py                  # Pydantic AI receipt agents (OpenRouter, OpenAI/LLM7)
+    ├── schemas.py              # Request/response schemas
     ├── services.py             # Cloudinary + catbox.moe image upload
     ├── dto/                    # Data structures
     │   ├── receipt_item.py     # ReceiptData and related OCR structures
     │   ├── settleup.py         # Settle Up data structures
-    │   └── llm7_override.py    # LLM7ChatModel — LLM response parsing workaround
-    ├── models.py               # Empty — no application ORM models
-    ├── admin.py                # Disabled (commented out)
+    │   └── llm7_override.py    # LLM7ChatModel - LLM response parsing workaround
+    ├── models.py               # Empty - no application ORM models
     └── tests/
         ├── conftest.py         # Fixtures with mocked external boundaries
-        └── test_transaction.py
+        └── test_*.py
 ```
 
 ## Notes & Limitations
 
 - **No application database:** `models.py` is empty; all state is external (Firebase, Redis, client).
 - **No Django ORM models:** transactions are created only via the Firebase REST API.
-- **Django admin is disabled** (`admin.py` is commented out).
+- **No models are registered with the Django admin** (the app has no models).
 - **Tax is all-or-nothing:** it is computed only if `member_taxes + member_items + shared_tax == total_amount` (float equality).
 - **No FX conversion:** transactions are filed in the group's currency and receipt amounts are assumed to match it; a receipt in a different currency than its group is recorded unconverted.
 - **`total_amount` is trusted input:** there is no reconciliation if extracted items differ from the declared total.

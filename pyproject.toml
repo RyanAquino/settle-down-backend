@@ -1,36 +1,192 @@
 [project]
 name = "settledown"
 version = "0.1.0"
-description = "Add your description here"
-requires-python = ">=3.12"
+description = "Receipt-splitting API: OCR a photo receipt and file it as a Settle Up group expense"
+requires-python = ">=3.14"
+# Declare everything the code imports directly (check with `uv run deptry .`), so a
+# transitive dependency changing upstream can never silently remove one.
 dependencies = [
     "cloudinary>=1.44.1",
+    # Django 5.2 is the current LTS (supported until April 2028).
+    "django>=5.2.19,<6",
     "django-cors-headers>=4.8.0",
-    "django-ninja>=1.4.3",
+    "django-ninja>=1.7.3",
     "django-redis>=6.0.0",
-    "dotenv>=0.9.9",
     "googletrans>=4.0.2",
     "hypercorn>=0.17.3",
+    # Moves in lockstep with pydantic-ai: its 1.x line targets the openai 2.x SDK
+    # (pydantic-ai 2.x is the one that requires openai>=3).
+    "openai>=2.29.0,<3",
     "psycopg2-binary>=2.9.10",
-    "pydantic-ai>=1.47.0",
-    "pyrebase4>=4.8.0",
-    "setuptools>=80.9.0",
+    "pydantic>=2.11",
+    # -slim with only the providers we use; the full `pydantic-ai` meta-package
+    # pulls every provider SDK (bedrock, cohere, mcp, ...) into production.
+    "pydantic-ai-slim[openai,openrouter]>=1.107.10,<2",
+    "python-dotenv>=1.2.2",
+    "requests>=2.33.0",
 ]
 
 [dependency-groups]
 dev = [
-    "black==24.8.0",
+    "black>=26.10.1",
     "debugpy>=1.8.21",
+    "deptry>=0.25.1",
+    "django-stubs>=5.2.9,<6",
+    "import-linter>=2.16",
+    "mypy>=2.4.1",
     "pre-commit>=4.6.0",
     "pytest>=9.0.3",
     "pytest-cov>=7.1.0",
     "pytest-django>=4.12.0",
-    "ruff>=0.13.1",
+    "ruff>=0.17.4",
+    "types-requests>=2.33.0.20261030",
 ]
 
+# ---------------------------------------------------------------- pytest ----
 [tool.pytest.ini_options]
 DJANGO_SETTINGS_MODULE = "settledown.settings"
 python_files = ["test_*.py"]
+testpaths = ["backend_api/tests"]
+# `live` tests hit real paid APIs: opt in with `-m live` (a later -m overrides
+# this one). --strict-* turns typos in markers/config into errors.
+addopts = ["-m", "not live", "--strict-markers", "--strict-config", "-ra"]
 markers = [
     "live: hits real external APIs (network + credits); skipped unless keys/fixtures are present",
 ]
+# Every warning is an error, so deprecations surface on the PR that introduces
+# them instead of on the upgrade that removes the API. Ignores must be specific.
+filterwarnings = [
+    "error",
+]
+
+# -------------------------------------------------------------- coverage ----
+[tool.coverage.run]
+source = ["backend_api", "settledown"]
+branch = true
+omit = ["*/tests/*", "*/migrations/*"]
+
+[tool.coverage.report]
+fail_under = 100
+show_missing = true
+skip_covered = true
+exclude_also = ["if TYPE_CHECKING:"]
+
+# ------------------------------------------------------------------ ruff ----
+[tool.ruff]
+
+[tool.ruff.lint]
+select = [
+    "E",     # pycodestyle errors
+    "W",     # pycodestyle warnings
+    "F",     # pyflakes
+    "I",     # isort
+    "B",     # bugbear: likely bugs
+    "UP",    # pyupgrade: modern syntax for the target Python
+    "SIM",   # simplifications
+    "C4",    # comprehensions
+    "PIE",   # misc. unnecessary code
+    "RET",   # return-statement hygiene
+    "DJ",    # Django-specific pitfalls
+    "S",     # bandit security checks (e.g. S113: HTTP call without a timeout)
+    "BLE",   # blind `except Exception`
+    "ASYNC", # blocking calls inside async code
+    "DTZ",   # naive datetimes
+    "PT",    # pytest style
+    "T20",   # stray print()
+    "ERA",   # commented-out code
+    "TID",   # import hygiene (absolute imports only)
+    "RUF",   # ruff-specific
+]
+ignore = [
+    # The formatter owns line length; what remains is long prose in prompts,
+    # docstrings and Field descriptions, which reads better unwrapped.
+    "E501",
+]
+# Full-width digits are deliberate: the OCR prompt tells the model to expect them.
+allowed-confusables = ["１", "２", "３"]
+
+[tool.ruff.lint.per-file-ignores]
+# assert is how pytest asserts; fixtures use fake credentials.
+"backend_api/tests/**" = ["S101", "S105", "S106"]
+
+[tool.ruff.lint.isort]
+known-first-party = ["backend_api", "settledown"]
+
+[tool.ruff.lint.flake8-tidy-imports]
+ban-relative-imports = "all"
+
+# ------------------------------------------------------------------ mypy ----
+[tool.mypy]
+plugins = ["mypy_django_plugin.main", "pydantic.mypy"]
+check_untyped_defs = true
+no_implicit_reexport = true
+strict_equality = true
+warn_redundant_casts = true
+warn_unused_ignores = true
+warn_unreachable = true
+warn_return_any = true
+enable_error_code = ["ignore-without-code", "redundant-expr", "truthy-bool"]
+
+# The money math and the Settle Up client are fully typed: every function must
+# be annotated, so the types document what flows into a financial calculation.
+[[tool.mypy.overrides]]
+module = ["backend_api.utils", "backend_api.settleup_utils", "backend_api.firebase_auth"]
+disallow_untyped_defs = true
+disallow_incomplete_defs = true
+disallow_any_generics = true
+
+[[tool.mypy.overrides]]
+# Third-party packages that ship no type information.
+module = ["cloudinary", "cloudinary.*", "googletrans", "googletrans.*"]
+ignore_missing_imports = true
+
+[tool.django-stubs]
+django_settings_module = "settledown.settings"
+
+[tool.pydantic-mypy]
+init_forbid_extra = true
+init_typed = true
+
+# --------------------------------------------------------- import-linter ----
+[tool.importlinter]
+root_packages = ["backend_api", "settledown"]
+include_external_packages = true
+
+[[tool.importlinter.contracts]]
+name = "Layered architecture: each layer only imports the layers below it"
+type = "layers"
+layers = [
+    "settledown.urls",
+    "settledown.api",
+    "backend_api.api | backend_api.settleup_api",
+    "backend_api.settleup_utils | backend_api.ocr | backend_api.services",
+    "backend_api.schemas",
+    "backend_api.utils | backend_api.firebase_auth",
+    "backend_api.dto",
+]
+
+[[tool.importlinter.contracts]]
+name = "Money math is pure: no web framework, HTTP, cache or SDK imports"
+type = "forbidden"
+source_modules = ["backend_api.utils"]
+forbidden_modules = [
+    "django",
+    "ninja",
+    "requests",
+    "cloudinary",
+    "googletrans",
+    "openai",
+    "pydantic_ai",
+]
+
+# ---------------------------------------------------------------- deptry ----
+[tool.deptry]
+known_first_party = ["backend_api", "settledown"]
+# Test modules may import dev-only packages (pytest).
+extend_exclude = [".*/tests/"]
+
+[tool.deptry.per_rule_ignores]
+# Used, but never imported: wired in by string in settings.py (corsheaders app,
+# django_redis cache backend), launched as a CLI (hypercorn), or kept on purpose
+# for a future Postgres backend (psycopg2-binary).
+DEP002 = ["django-cors-headers", "django-redis", "hypercorn", "psycopg2-binary"]

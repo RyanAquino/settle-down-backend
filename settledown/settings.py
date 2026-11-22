@@ -11,9 +11,9 @@ https://docs.djangoproject.com/en/5.2/ref/settings/
 """
 
 import os
+from pathlib import Path
 
 from dotenv import load_dotenv
-from pathlib import Path
 
 load_dotenv()
 
@@ -32,7 +32,11 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 # See https://docs.djangoproject.com/en/5.2/howto/deployment/checklist/
 
 # SECURITY WARNING: keep the secret key used in production secret!
-SECRET_KEY = "django-insecure-4-_z3b2#vf*rb6ipo%v-f+@59gfw53nnltzj=7_t0-nwa+xh76"
+# Production must set DJANGO_SECRET_KEY; the fallback is only for local development.
+SECRET_KEY = os.getenv(
+    "DJANGO_SECRET_KEY",
+    "django-insecure-4-_z3b2#vf*rb6ipo%v-f+@59gfw53nnltzj=7_t0-nwa+xh76",
+)
 
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = True
@@ -55,13 +59,15 @@ INSTALLED_APPS = [
 MIDDLEWARE = [
     "django.middleware.security.SecurityMiddleware",
     "django.contrib.sessions.middleware.SessionMiddleware",
+    # django-cors-headers must sit above any middleware that can return a
+    # response (CommonMiddleware's APPEND_SLASH redirects), or those responses
+    # go out without CORS headers.
+    "corsheaders.middleware.CorsMiddleware",
     "django.middleware.common.CommonMiddleware",
     "django.middleware.csrf.CsrfViewMiddleware",
     "django.contrib.auth.middleware.AuthenticationMiddleware",
     "django.contrib.messages.middleware.MessageMiddleware",
     "django.middleware.clickjacking.XFrameOptionsMiddleware",
-    "corsheaders.middleware.CorsMiddleware",
-    "django.middleware.common.CommonMiddleware",
 ]
 
 ROOT_URLCONF = "settledown.urls"
@@ -86,15 +92,10 @@ WSGI_APPLICATION = "settledown.wsgi.application"
 # Database
 # https://docs.djangoproject.com/en/5.2/ref/settings/#databases
 
+# The app owns no models; SQLite only backs Django's built-in apps. To move to
+# Postgres, switch ENGINE to "django.db.backends.postgresql" and supply NAME,
+# USER, PASSWORD, HOST and PORT (psycopg2-binary is already a dependency).
 DATABASES = {
-    # "default": {
-    #     "ENGINE": "django.db.backends.postgresql",
-    #     "NAME": "mydb",  # Name of your PostgreSQL database
-    #     "USER": "user",  # PostgreSQL username
-    #     "PASSWORD": "password",  # PostgreSQL password
-    #     "HOST": "localhost",  # Or the IP address/hostname of your PostgreSQL server
-    #     "PORT": "5433",  # Default PostgreSQL port
-    # }
     "default": {
         "ENGINE": "django.db.backends.sqlite3",
         "NAME": BASE_DIR / "db.sqlite3",
@@ -145,16 +146,16 @@ MEDIA_ROOT = BASE_DIR / "media"
 MEDIA_URL = "/media/"
 
 
-SETTLE_UP_CONFIG = {
-    "apiKey": os.getenv("SETTLE_UP_API_KEY"),
-    "authDomain": os.getenv("SETTLE_UP_API_DOMAIN"),
-    "databaseURL": f"https://{os.getenv('SETTLE_UP_API_DOMAIN')}",
-    "storageBucket": f"{os.getenv('SETTLE_UP_API_NAMESPACE')}.appspot.com",
-    "projectId": os.getenv("SETTLE_UP_API_NAMESPACE"),
-}
-SETTLE_UP_USER = os.getenv("SETTLE_UP_USER")
-SETTLE_UP_PASSWORD = os.getenv("SETTLE_UP_PASSWORD")
+# Settle Up runs on Firebase: the web API key signs the service account in
+# (Firebase Auth REST), and the Realtime Database lives at SETTLE_UP_API_DOMAIN.
+SETTLE_UP_API_KEY = os.getenv("SETTLE_UP_API_KEY", "")
+SETTLE_UP_USER = os.getenv("SETTLE_UP_USER", "")
+SETTLE_UP_PASSWORD = os.getenv("SETTLE_UP_PASSWORD", "")
 SETTLE_UP_BASE_URL = f"https://{os.getenv('SETTLE_UP_API_DOMAIN')}"
+
+# Seconds any single upstream HTTP call (Firebase, Settle Up, image hosts) may
+# take. Without a bound, one hung upstream pins an ASGI worker indefinitely.
+UPSTREAM_HTTP_TIMEOUT = float(os.getenv("UPSTREAM_HTTP_TIMEOUT", "30"))
 
 REDIS_URL = os.getenv("REDIS_URL", "redis://localhost:6379/1")
 APP_AUTH = os.getenv("APP_AUTH")

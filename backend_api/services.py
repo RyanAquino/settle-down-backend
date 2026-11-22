@@ -5,25 +5,20 @@ from django.conf import settings
 from ninja import UploadedFile
 
 
-def catbox_upload_file(file_obj: UploadedFile):
-    """
-    Upload to catbox.moe to retrieve file URL.
-
-    Args:
-        file_obj: UploadedFile
-
-    Returns
-    """
+def catbox_upload_file(file_obj: UploadedFile) -> str:
+    """Upload to catbox.moe and return the hosted file's URL."""
     file_obj.seek(0)
     response = requests.post(
         "https://catbox.moe/user/api.php",
         data={"reqtype": "fileupload"},
         files={"fileToUpload": file_obj},
+        timeout=settings.UPSTREAM_HTTP_TIMEOUT,
     )
     return response.text.strip()
 
 
-def cloudinary_upload_file(file_obj: UploadedFile):
+def cloudinary_upload_file(file_obj: UploadedFile) -> str:
+    """Upload to Cloudinary and return the hosted file's HTTPS URL."""
     file_obj.seek(0)
     cloudinary.config(
         cloud_name=settings.CLOUDINARY_CLOUD_NAME,
@@ -32,5 +27,8 @@ def cloudinary_upload_file(file_obj: UploadedFile):
         secure=True,
     )
 
-    upload_result = cloudinary.uploader.upload(file_obj)
-    return upload_result["secure_url"]
+    upload_result = cloudinary.uploader.upload(
+        file_obj, timeout=settings.UPSTREAM_HTTP_TIMEOUT
+    )
+    url: str = upload_result["secure_url"]
+    return url
