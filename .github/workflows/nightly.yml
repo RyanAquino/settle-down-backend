@@ -24,8 +24,7 @@ jobs:
         with:
           persist-credentials: false
       - uses: astral-sh/setup-uv@v10.3.3
-      # Resolve everything to the newest versions pyproject.toml allows, so an
-      # upstream release that breaks us shows up here before Dependabot's PR.
+      # Test the newest versions pyproject.toml allows to catch upstream breakage.
       - name: Upgrade the lockfile (not committed)
         run: |
           uv lock --upgrade

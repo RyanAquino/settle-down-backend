@@ -128,6 +128,6 @@ pytest is configured in `pyproject.toml` (`DJANGO_SETTINGS_MODULE=settledown.set
   Live OCR tests (`-m live`) run only locally.
 
 All actions are pinned to exact version tags (e.g. `astral-sh/setup-uv@v10.3.3`), not commit SHAs.
-Container images are pinned to digests, and Dependabot keeps all of them current.
+Container images are pinned to digests.
 Keep the lint/format commands here, in CI, in `.pre-commit-config.yaml`, in the README, and in the `.claude/settings.json` edit hook in sync.
 That hook runs `ruff check --fix` then `black` on every edited `.py` file; `bash scripts/verify-format-hook.sh` checks it still works.
