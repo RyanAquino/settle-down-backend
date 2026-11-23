@@ -387,14 +387,14 @@ class TestDiscountedReceipts:
         assert body["receipt_date"] == "2026-11-23T15:16:00"
         assert _accepted_by_installed_app(body)
 
-    def test_a_receipt_a_person_must_review_keeps_its_printed_prices(
-        self, client, ocr_agent
-    ):
+    def test_a_receipt_a_person_must_review_allocates_nothing(self, client, ocr_agent):
         ambiguous = scans.vector("sugi_both_item_discounts_read_under_one_item")
 
         body = _scan_response(client, ocr_agent, scans.scan(ambiguous))
 
-        assert [item["cost"] for item in body["receipt_items"]] == [
+        assert {item["cost"] for item in body["receipt_items"]} == {0.0}
+        assert {item["discount"] for item in body["receipt_items"]} == {0.0}
+        assert [item["list_price"] for item in body["receipt_items"]] == [
             987.0,
             877.0,
             2310.0,
@@ -402,7 +402,6 @@ class TestDiscountedReceipts:
             767.0,
             278.0,
         ]
-        assert {item["discount"] for item in body["receipt_items"]} == {0.0}
         assert body["total_amount"] == 5809.0
         # Fail closed: the installed app rejects it rather than file a guess.
         assert not _accepted_by_installed_app(body)
@@ -630,9 +629,7 @@ class TestCorrections:
         ).json()
 
         assert result["reconciliation"] == {"status": "mismatch", "difference": -494.0}
-        assert [item["cost"] for item in result["receipt_items"]] == [
-            item["list_price"] for item in body["receipt_items"]
-        ]
+        assert {item["cost"] for item in result["receipt_items"]} == {0.0}
         assert {item["discount"] for item in result["receipt_items"]} == {0.0}
 
     def test_a_coupon_larger_than_its_item_can_be_spread_wider(self, client, ocr_agent):

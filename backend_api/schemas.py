@@ -56,7 +56,8 @@ class OCRReceiptItemOut(Schema):
         description=(
             "What this line cost after its share of every discount, coupon, points "
             "and surcharge, for the quantity shown; before tax when tax is added on "
-            "top. The printed price when the receipt did not reconcile"
+            "top. 0 when the receipt did not reconcile: see list_price and "
+            "reconciliation"
         )
     )
     quantity: int = Field(description="The quantity purchased on this line")

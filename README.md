@@ -62,7 +62,7 @@ settledown exposes a [Django Ninja](https://django-ninja.dev/) API under the `/a
 6. The output validator asks the model to read again only when a transcription cannot be read as money, and at most once more when it does not add up; the run returns the best attempt, not the last.
 7. The receipt image is uploaded to Cloudinary; on failure, it is uploaded to catbox.moe.
 8. The API returns the items with `cost` set to what each line cost after every discount, plus shop names, tax %, the total paid, date, and image URL.
-   A scan that does not reconcile keeps its printed prices instead, so the app asks for another photo rather than filing a guessed split.
+   A scan that does not reconcile allocates nothing (every `cost` is 0), so the app cannot file a guessed split; the review fields say why.
 
 ### Flow 2 — Transaction Creation
 
@@ -205,7 +205,21 @@ Extract receipt items from an uploaded image using OCR via AI.
 In the example below, a 15% discount takes 300 off the 2,000 lotion, then 270 of redeemed points come off both lines in proportion (100 and 170).
 When tax is added on top at one printed rate, `cost` stays before tax and the items plus `tax_percentage` add up to `total_amount`, as before.
 `discount` is everything taken off the printed price, already subtracted from `cost`.
-When a scan cannot be reconciled with the printed totals, or a discount's items cannot be settled from the printed numbers, `cost` is the printed price and `discount` is 0, so the items do not add up and the app asks for another photo.
+When a scan cannot be reconciled with the printed totals, or a discount's items cannot be settled from the printed numbers, nothing is allocated: every `cost` and `discount` is 0.
+Printed prices are not returned as costs because they could add up to a misread total, which an app that checks costs against the total would accept.
+
+The review fields describe the receipt as printed and how it was settled:
+
+| Field | Type | Description |
+| --- | --- | --- |
+| `receipt_items[].list_price` | `float` | The price printed on the item's own line |
+| `decimal_places` | `int` | Decimal places of the receipt's currency (0 for yen, 2 for cents) |
+| `adjustments` | `list` | Every printed line that changed the amount to pay, in printed order: `printed_label`, `kind` (`discount`, `points` or `surcharge`), `amount`, `percentage`, `eligible_subtotal`, `item_orders`, `status` and `allocations` |
+| `tax_lines` | `list` | The printed tax lines: `rate`, `taxable_amount`, `tax_amount` |
+| `reconciliation` | `object` | `status` (`reconciled`, `needs_review` or `mismatch`) and the unexplained `difference` |
+
+An adjustment's `status` is `verified` when printed numbers (a base amount or a percentage) prove which items it covers, `assumed` when it was taken from the receipt's layout or applied to the whole receipt, and `unresolved` when a person must choose its items.
+`allocations` lists what each item took, and is empty unless the receipt reconciled.
 
 **Example:**
 
@@ -243,6 +257,27 @@ curl -X POST "http://localhost:8000/api/v1/receipts/receipt-items/" \
   "receipt_image_url": "https://res.cloudinary.com/example/image/upload/receipt.jpg"
 }
 ```
+
+### `POST /api/v1/receipts/allocations/`
+
+Recalculate a scanned receipt after a person chose which items each adjustment applies to.
+The app's review step posts back what the scan returned, with each adjustment's `item_orders` set to the chosen items; fields it does not need are ignored.
+There is no model call and no image: the same allocation runs with the chosen items, then reconciles against the same printed totals and tax lines.
+
+**Auth:** Bearer token required.
+
+**Request** (`application/json`):
+
+| Field | Type | Description |
+| --- | --- | --- |
+| `decimal_places` | `int` | As the scan returned it |
+| `receipt_items` | `list` | Each with `item_order` and `list_price` |
+| `adjustments` | `list` | Each with `printed_label`, `kind`, `amount` and the chosen `item_orders`; `percentage` and `eligible_subtotal` are optional and only echoed |
+| `tax_lines` | `list` | The scan's `tax_lines` (optional) |
+| `total_amount` | `float` | The scan's `total_amount` |
+
+**Response** (`200`): `receipt_items` (each with `item_order`, `list_price`, `cost`, `discount`), `adjustments`, `reconciliation`, `tax_percentage` and `total_amount`, with the same meaning as in the scan response.
+A choice that cannot be applied, such as an unknown item or a discount larger than what its items cost, is a `422` with a `detail` message.
 
 ### `GET /api/v1/settle-up/groups/`
 
@@ -467,7 +502,7 @@ settledown/
 - **No Django ORM models:** transactions are created only via the Firebase REST API.
 - **No models are registered with the Django admin** (the app has no models).
 - **Tax is all-or-nothing on transactions:** it is computed only if `member_taxes + member_items + shared_tax == total_amount` (float equality).
-- **Scans with tax added on top at several rates, or with a deduction after tax, do not reconcile** and keep their printed prices, so the app asks for review.
+- **Scans with a deduction after tax do not reconcile**, nor do tax-on-top receipts at several rates whose printed bases do not identify each rate's items; the app asks for review.
 - **No FX conversion:** transactions are filed in the group's currency and receipt amounts are assumed to match it; a receipt in a different currency than its group is recorded unconverted.
 - **The transaction endpoint trusts `total_amount`:** the scan endpoint reconciles every scan against the printed totals, but a transaction posted directly is not checked.
 - **Settle Up metadata is cached ~24h** (~86,500s): group/member info may be stale until the cache expires.

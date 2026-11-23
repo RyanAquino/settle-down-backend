@@ -56,6 +56,7 @@ It mounts two routers under `/api/`:
   It has one tool, `translate_jp_to_en_text` (Google Translate).
   The output validator (`validate_receipt_scan`) asks for a re-read only when a transcription cannot be read as money, and for at most one targeted re-read when it does not add up; it records every attempt in `ScanAttempts` (the run's deps) and the run ends with the best one, not the last.
   If a later read fails outright, the endpoint still answers with the best earlier attempt.
+- `/api/v1/receipts/allocations/` recalculates a scanned receipt with the items a person chose for each adjustment (the app's review step); no model call, and a choice that cannot be applied is a 422.
   The image is then uploaded to Cloudinary, falling back to catbox.moe on any exception (logged with its traceback).
   `get_receipt_agent()` is an alternate OpenAI/LLM7 factory (`gpt-5-mini`) wrapped by `backend_api/dto/llm7_override.py` (`LLM7ChatModel`), a parsing workaround; don't delete it as dead code.
 - `/api/v1/settle-up/...` (`backend_api/settleup_api.py`) lists groups, lists members, and creates a transaction.
@@ -82,7 +83,10 @@ The normative rules are in its module docstring and pinned by `backend_api/tests
 - **Allocation** is in printed order, by largest remainder with exact integer remainders, ties to the lower `item_order`.
   Don't reuse the app's `allocateMoney` logic: it ranks float remainders and breaks exact ties differently.
 - **Reconciliation**: the costs must equal the amount due, or do with one printed tax rate added on top (then `cost` stays pre-tax and `tax_percentage` carries the rate, today's shape), or with the points taken off a total the model read before them; printed per-rate taxable bases must agree.
-- **Fail closed**: `needs_review` or `mismatch` allocates nothing, so `cost` is the printed price and the installed app's check rejects the scan rather than filing a guessed split.
+  Printed tax the app cannot add itself (no rate printed, or several rates whose printed bases single out their items) is spread into those items' costs.
+  Printed tax lines that say the prices include or exclude tax rule out the readings that contradict them.
+- **Fail closed**: `needs_review` or `mismatch` allocates nothing and every `cost` is 0, which the installed app's check always rejects (it refuses a subtotal of 0).
+  Don't return printed prices there: they can add up to a misread total (the subtotal before a coupon) and would be filed as is.
   `backend_api/tests/client_gate.py` restates that app check, and the vectors assert it accepts exactly the reconciled results.
 - Redeemed points always reduce what the group splits, whether printed as a discount or as a payment.
 

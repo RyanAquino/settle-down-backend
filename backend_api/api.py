@@ -234,7 +234,8 @@ def _receipt_response(scan: ReceiptScan, image_url: str) -> OCRReceiptPostOut:
 
     ``cost`` is what each line cost after every adjustment, so the items add
     up to ``total_amount`` (or do with ``tax_percentage`` added on top). A scan
-    that does not reconcile keeps its printed prices instead.
+    that does not reconcile allocates nothing: every cost is 0 and the review
+    step reads ``list_price``.
     """
     receipt, allocation = allocate_scan(scan)
     places = receipt.decimal_places

@@ -237,7 +237,7 @@
             "type": "integer"
           },
           "cost": {
-            "description": "What this line cost after its share of every discount, coupon, points and surcharge, for the quantity shown; before tax when tax is added on top. The printed price when the receipt did not reconcile",
+            "description": "What this line cost after its share of every discount, coupon, points and surcharge, for the quantity shown; before tax when tax is added on top. 0 when the receipt did not reconcile: see list_price and reconciliation",
             "title": "Cost",
             "type": "number"
           },
