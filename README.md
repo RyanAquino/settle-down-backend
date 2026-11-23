@@ -502,7 +502,7 @@ settledown/
 - **No Django ORM models:** transactions are created only via the Firebase REST API.
 - **No models are registered with the Django admin** (the app has no models).
 - **Tax is all-or-nothing on transactions:** it is computed only if `member_taxes + member_items + shared_tax == total_amount` (float equality).
-- **Scans with a deduction after tax do not reconcile**, nor do tax-on-top receipts at several rates whose printed bases do not identify each rate's items; the app asks for review.
+- **Scans with a deduction after tax do not reconcile**, nor do tax-on-top receipts at several rates whose printed bases do not identify each rate's items, nor receipts with a surcharge outside the tax base (such as a US gratuity with a printed tax rate); the app asks for review.
 - **No FX conversion:** transactions are filed in the group's currency and receipt amounts are assumed to match it; a receipt in a different currency than its group is recorded unconverted.
 - **The transaction endpoint trusts `total_amount`:** the scan endpoint reconciles every scan against the printed totals, but a transaction posted directly is not checked.
 - **Settle Up metadata is cached ~24h** (~86,500s): group/member info may be stale until the cache expires.

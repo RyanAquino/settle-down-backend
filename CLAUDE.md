@@ -84,7 +84,10 @@ The normative rules are in its module docstring and pinned by `backend_api/tests
   Don't reuse the app's `allocateMoney` logic: it ranks float remainders and breaks exact ties differently.
 - **Reconciliation**: the costs must equal the amount due, or do with one printed tax rate added on top (then `cost` stays pre-tax and `tax_percentage` carries the rate, today's shape), or with the points taken off a total the model read before them; printed per-rate taxable bases must agree.
   Printed tax the app cannot add itself (no rate printed, or several rates whose printed bases single out their items) is spread into those items' costs.
-  Printed tax lines that say the prices include or exclude tax rule out the readings that contradict them.
+  Printed tax lines that say the prices include or exclude tax rule out the readings that contradict them, including a rate and tax printed without a base, read against the items.
+  When prices include tax and every rate prints its base, some items must make up each base (one unit of slack per line spread over several items); if none do, lines placed on the model's word go back to review.
+  A surcharge that repeats the printed tax total is tax read twice and goes to review.
+- **Bounded work**: exact searches over item sets share one step budget per allocation (`_SEARCH_STEPS`) and give up by failing closed; amounts and line counts are capped (`MAX_AMOUNT`, `MAX_ITEMS`, ...), and the corrections schema caps its lists, so a crafted body cannot tie up a worker.
 - **Fail closed**: `needs_review` or `mismatch` allocates nothing and every `cost` is 0, which the installed app's check always rejects (it refuses a subtotal of 0).
   Don't return printed prices there: they can add up to a misread total (the subtotal before a coupon) and would be filed as is.
   `backend_api/tests/client_gate.py` restates that app check, and the vectors assert it accepts exactly the reconciled results.

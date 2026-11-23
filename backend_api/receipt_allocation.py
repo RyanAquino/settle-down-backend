@@ -14,7 +14,8 @@ money math, in integer minor units, and never relies on the model's arithmetic.
    directly, with one printed tax rate added on top, or with printed tax that
    has no rate or that the printed bases tie to their items (spread into those
    items' costs). The printed tax lines must not contradict whether the prices
-   include tax, and the printed per-rate taxable bases must agree.
+   include tax, and the printed per-rate taxable bases must agree, in sum and,
+   when prices include tax, item by item.
 
 A receipt that does not reconcile, or that has an adjustment whose scope cannot
 be resolved, allocates nothing: every cost is 0. A client that checks the items
@@ -37,11 +38,21 @@ ScopeStatus = Literal["verified", "assumed", "unresolved"]
 ReceiptStatus = Literal["reconciled", "needs_review", "mismatch"]
 
 MAX_DECIMAL_PLACES = 3
+# Sizes no real receipt reaches. Past them a receipt is not read at all, which
+# keeps every search below bounded and every sum a finite float.
+MAX_ITEMS = 500
+MAX_ADJUSTMENTS = 100
+MAX_TAX_LINES = 20
+MAX_AMOUNT = 10**12  # minor units
 
-# Bound on the subset search that recovers a scope from a printed base amount.
-# Past it the search gives up and the scope is left unresolved; the bound keeps
-# a long receipt from blocking the request.
-_MAX_SUBSET_SUMS = 20_000
+# Work one allocation may spend on exact searches over sets of items: one step
+# per reachable sum per item, shared by every search in the allocation so that
+# many lines cannot multiply it. A search past it gives up, which fails closed
+# (the scope stays unresolved, or the receipt does not reconcile).
+_SEARCH_STEPS = 1_000_000
+# Largest printed amount the per-rate grouping check searches against; a
+# larger receipt skips that check.
+_MAX_GROUP_TARGET = 5_000_000
 
 
 class TranscriptionError(ValueError):
@@ -126,8 +137,12 @@ def decimal_places_for(declared: int, amounts: Iterable[float]) -> int:
     The transcribed value matters when every printed amount happens to be
     whole (a 10.00 dollar receipt arrives as 10.0). An amount with more
     decimals than transcribed raises the count instead of failing the scan.
+    One decimal place is kept in hundredths, the precision the app checks
+    added tax at.
     """
     places = max([declared, *(_fraction_digits(amount) for amount in amounts)])
+    if places == 1:
+        places = 2
     if not 0 <= places <= MAX_DECIMAL_PLACES:
         raise TranscriptionError(
             f"decimal_places must be between 0 and {MAX_DECIMAL_PLACES}, "
@@ -142,6 +157,8 @@ def to_minor_units(amount: float, decimal_places: int) -> int:
         raise TranscriptionError(
             f"{amount} has more than {decimal_places} decimal places."
         )
+    if abs(scaled) > MAX_AMOUNT:
+        raise TranscriptionError(f"{amount} is larger than any receipt amount.")
     return int(scaled)
 
 
@@ -175,6 +192,14 @@ def printed_receipt(scan: ReceiptScan) -> PrintedReceipt:
     if not scan.items:
         raise TranscriptionError(
             "No purchased items found; re-read the image and list every priced item."
+        )
+    if (
+        len(scan.items) > MAX_ITEMS
+        or len(scan.adjustments) > MAX_ADJUSTMENTS
+        or len(scan.tax_lines) > MAX_TAX_LINES
+    ):
+        raise TranscriptionError(
+            "Too many lines for one receipt; list each printed line exactly once."
         )
     for item in scan.items:
         if item.printed_price < 0:
@@ -225,6 +250,10 @@ def printed_receipt(scan: ReceiptScan) -> PrintedReceipt:
         units = abs(minor(amount))
         return units or None
 
+    def amount_or_none(amount: float | None) -> int | None:
+        # A printed tax of 0 is printed: it says the rate's items carry no tax.
+        return None if amount is None else abs(minor(amount))
+
     adjustments: list[Adjustment] = []
     for scanned in scan.adjustments:
         # The sign comes from the kind; a copied minus sign is not an error.
@@ -255,7 +284,7 @@ def printed_receipt(scan: ReceiptScan) -> PrintedReceipt:
             TaxLine(
                 rate=_rate(line.rate),
                 taxable_amount=positive_or_none(line.taxable_amount),
-                tax_amount=positive_or_none(line.tax_amount),
+                tax_amount=amount_or_none(line.tax_amount),
             )
             for line in scan.tax_lines
         ),
@@ -290,35 +319,88 @@ def _percent_fits(percentage: Fraction, base: int, amount: int) -> bool:
 def _percent_fits_lines(
     percentage: Fraction, bases: Sequence[int], amount: int
 ) -> bool:
-    """``amount`` is ``percentage`` of these lines, rounded on their sum or line by line."""
+    """``amount`` is ``percentage`` of these lines.
+
+    Either rounded once on their sum, or line by line with one rounding rule
+    (down, up or half up) for every line: never a mix no till would print.
+    """
     if _percent_fits(percentage, sum(bases), amount):
         return True
-    low = sum(floor(percentage * base / 100) for base in bases)
-    high = sum(ceil(percentage * base / 100) for base in bases)
-    return low <= amount <= high
+    exact = [percentage * base / 100 for base in bases]
+    return amount in {
+        sum(floor(value) for value in exact),
+        sum(ceil(value) for value in exact),
+        sum(floor(value + Fraction(1, 2)) for value in exact),
+    }
+
+
+class _Budget:
+    """The search work left in one allocation."""
+
+    def __init__(self) -> None:
+        self.steps = _SEARCH_STEPS
+
+    def spend(self, steps: int) -> bool:
+        self.steps -= steps
+        return self.steps >= 0
 
 
 def _unique_subset(
-    orders: Sequence[int], weights: Mapping[int, int], target: int
+    orders: Sequence[int], weights: Mapping[int, int], target: int, budget: _Budget
 ) -> tuple[int, ...] | None:
-    """The one subset of ``orders`` whose weights sum to ``target``, if exactly one."""
-    # Each reachable sum maps to its number of subsets (capped at 2) and, while
-    # that number is 1, a bitmask of the subset's positions in ``orders``.
-    reachable: dict[int, tuple[int, int]] = {0: (1, 0)}
-    for bit, order in enumerate(orders):
+    """The one subset of ``orders`` whose weights sum to ``target``, if exactly one.
+
+    Weights must be positive. Gives up (None) when the budget runs out.
+    """
+    if sum(weights[order] for order in orders) < target:
+        return None
+    # Number of subsets reaching each sum (capped at 2), and how each sum was
+    # first reached: the sum before it and the position of the item added.
+    counts: dict[int, int] = {0: 1}
+    first: dict[int, tuple[int, int]] = {}
+    for position, order in enumerate(orders):
+        if not budget.spend(len(counts)):
+            return None
         weight = weights[order]
-        for subtotal, (count, mask) in list(reachable.items()):
+        for subtotal, count in list(counts.items()):
             reached = subtotal + weight
             if reached > target:
                 continue
-            seen, _ = reachable.get(reached, (0, 0))
-            reachable[reached] = (min(2, seen + count), mask | 1 << bit)
-        if len(reachable) > _MAX_SUBSET_SUMS:
-            return None
-    count, mask = reachable.get(target, (0, 0))
-    if count != 1:
+            seen = counts.get(reached, 0)
+            if not seen:
+                first[reached] = (subtotal, position)
+            counts[reached] = min(2, seen + count)
+    if counts.get(target) != 1:
         return None
-    return tuple(order for bit, order in enumerate(orders) if mask >> bit & 1)
+    # With exactly one subset, the first way each sum on its path was reached
+    # is that subset.
+    chosen: set[int] = set()
+    reached = target
+    while reached:
+        reached, position = first[reached]
+        chosen.add(position)
+    return tuple(order for position, order in enumerate(orders) if position in chosen)
+
+
+def _nearest_reachable(weights: Iterable[int], target: int) -> int | None:
+    """How far ``target`` is from the nearest sum of some of ``weights``.
+
+    None when ``target`` is too large to search.
+    """
+    if target > _MAX_GROUP_TARGET:
+        return None
+    # Bit n of ``reachable`` is set when some of the weights sum to n.
+    reachable = 1
+    mask = (1 << (2 * target + 1)) - 1
+    for weight in weights:
+        reachable |= (reachable << weight) & mask
+    # The highest sum at or below the target (the empty set always reaches 0),
+    # and the lowest at or above it.
+    below = target - ((reachable & ((1 << (target + 1)) - 1)).bit_length() - 1)
+    above = reachable >> target
+    if not above:
+        return below
+    return min(below, (above & -above).bit_length() - 1)
 
 
 def _scope_from_base(
@@ -326,6 +408,7 @@ def _scope_from_base(
     candidates: Sequence[tuple[int, ...]],
     live: tuple[int, ...],
     nets: Mapping[int, int],
+    budget: _Budget,
 ) -> tuple[int, ...] | None:
     """The items whose current costs add up to the printed base amount.
 
@@ -336,7 +419,7 @@ def _scope_from_base(
     for candidate in candidates:
         if candidate and sum(nets[order] for order in candidate) == base:
             return candidate
-    return _unique_subset(live, nets, base)
+    return _unique_subset(live, nets, base, budget)
 
 
 def _single_item_fit(
@@ -391,14 +474,21 @@ def _scope_from_percentage(
         for basis in (prices, nets)
     ):
         return hint
+    # With no usable hint, settle the line only when exactly one reading fits:
+    # one item, every item, or every item without a discount of its own.
+    readings: list[tuple[int, ...]] = []
     if (single := _single_item_fit(percentage, amount, live, nets, prices)) is not None:
-        return single
+        readings.append(single)
     for candidate in (live, unspecific):
-        if candidate and _percent_fits_lines(
-            percentage, [nets[order] for order in candidate], amount
+        if (
+            candidate
+            and candidate not in readings
+            and _percent_fits_lines(
+                percentage, [nets[order] for order in candidate], amount
+            )
         ):
-            return candidate
-    return None
+            readings.append(candidate)
+    return readings[0] if len(readings) == 1 else None
 
 
 def _resolve_scope(
@@ -406,6 +496,7 @@ def _resolve_scope(
     nets: Mapping[int, int],
     prices: Mapping[int, int],
     item_specific: set[int],
+    budget: _Budget,
 ) -> tuple[ScopeStatus, tuple[int, ...]]:
     live = tuple(order for order, net in nets.items() if net > 0)
     hint = tuple(order for order in adjustment.item_orders if nets.get(order, 0) > 0)
@@ -415,17 +506,12 @@ def _resolve_scope(
     status: ScopeStatus = "verified"
     if adjustment.eligible_subtotal is not None:
         base = adjustment.eligible_subtotal
-        scope = _scope_from_base(base, (hint, live, unspecific), live, nets)
-        if (
-            scope
-            and adjustment.percentage is not None
-            and not _percent_fits_lines(
-                adjustment.percentage,
-                [nets[order] for order in scope],
-                adjustment.amount,
-            )
+        scope = _scope_from_base(base, (hint, live, unspecific), live, nets, budget)
+        if adjustment.percentage is not None and not _percent_fits(
+            adjustment.percentage, base, adjustment.amount
         ):
-            # The base and the percent disagree: one of them was misread.
+            # The percent is taken on the printed base: if they disagree, one of
+            # them was misread, whichever items happen to add up to the base.
             scope = None
     elif adjustment.percentage is not None:
         scope = _scope_from_percentage(
@@ -486,63 +572,167 @@ def _complete_tax_lines(tax_lines: Sequence[TaxLine]) -> list[TaxLine] | None:
     """The rated tax lines, when every one prints its rate, base and tax."""
     rated = [line for line in tax_lines if line.rate is not None]
     if not rated or any(
-        not line.rate or line.taxable_amount is None or line.tax_amount is None
-        for line in rated
+        line.taxable_amount is None or line.tax_amount is None for line in rated
     ):
         return None
     return rated
 
 
+def _tax_form(rate: Fraction, base: int, tax: int) -> str | None:
+    """Whether ``tax`` sits inside ``base`` or is added on top of it, if only one fits.
+
+    Inside, the tax is ``rate / (100 + rate)`` of the base; on top it is
+    ``rate / 100`` of it; either rounded any way.
+    """
+    inside = abs(base * rate - (100 + rate) * tax) < 100 + rate
+    on_top = abs(base * rate - 100 * tax) < 100
+    if inside == on_top:
+        return None
+    return "inside" if inside else "on top"
+
+
 def _prices_include_tax(
-    lines: Sequence[TaxLine] | None, subtotals: Sequence[int]
+    tax_lines: Sequence[TaxLine],
+    complete: Sequence[TaxLine] | None,
+    subtotals: Sequence[int],
 ) -> bool | None:
     """What the printed tax lines say about the item prices, when they say anything.
 
-    A line whose tax is ``rate / (100 + rate)`` of its base prints a base that
-    includes the tax, so the prices do too. A line whose tax is ``rate / 100``
-    of its base prints the base before tax: the prices then include tax when
-    they add up to the bases plus the tax, and exclude it when they add up to
-    the bases alone. ``subtotals`` are the items with and without the points
-    taken off, since points paid after tax leave the bases unchanged. ``lines``
-    are the complete tax lines, or None when they are not all printed.
+    ``subtotals`` are the items with and without the points taken off, since
+    points paid after tax leave the bases unchanged. With complete lines, a
+    base that includes its tax means the prices do; a base before tax means the
+    prices include tax when they add up to the bases plus the tax, and exclude
+    it when they add up to the bases alone. Without bases, one rate's tax is
+    read against the items themselves, and several rates' tax that no price
+    could hold inside it means the tax was added on top.
     """
-    if lines is None:
-        return None
-    forms = set()
-    for line in lines:
-        rate = line.rate or Fraction(0)
-        base, tax = line.taxable_amount or 0, line.tax_amount or 0
-        inside = abs(base * rate - (100 + rate) * tax) < 100 + rate
-        on_top = abs(base * rate - 100 * tax) < 100
-        if inside != on_top:
-            forms.add("inside" if inside else "on top")
-    if forms == {"inside"}:
-        return True
-    if forms == {"on top"}:
-        bases = sum(line.taxable_amount or 0 for line in lines)
-        tax = sum(line.tax_amount or 0 for line in lines)
-        if bases + tax in subtotals:
+    if complete is not None:
+        forms = {
+            _tax_form(
+                line.rate or Fraction(0), line.taxable_amount or 0, line.tax_amount or 0
+            )
+            for line in complete
+            if line.rate
+        } - {None}
+        if forms == {"inside"}:
             return True
-        if bases in subtotals:
-            return False
+        if forms == {"on top"}:
+            bases = sum(line.taxable_amount or 0 for line in complete)
+            tax = sum(line.tax_amount or 0 for line in complete)
+            if bases + tax in subtotals:
+                return True
+            if bases in subtotals:
+                return False
+        return None
+    taxed = [line for line in tax_lines if line.rate and line.tax_amount is not None]
+    if not taxed or any(line.taxable_amount is not None for line in taxed):
+        return None
+    if len(taxed) == 1:
+        (line,) = taxed
+        # Read against each subtotal; only readings that agree say anything.
+        forms = {
+            _tax_form(line.rate or Fraction(0), subtotal, line.tax_amount or 0)
+            for subtotal in subtotals
+        } - {None}
+        if len(forms) == 1:
+            return forms == {"inside"}
+        return None
+    # Tax inside the prices at rate r, printed as t, needs a base above
+    # (t - 1)(100 + r) / r; the rates' bases are separate parts of the items.
+    least = sum(
+        ((line.tax_amount or 0) - 1) * (100 + (line.rate or 0)) / (line.rate or 1)
+        for line in taxed
+    )
+    return False if least >= max(subtotals) else None
+
+
+Reading = Literal["included", "added", "spread", "spread by rate", "before points"]
+
+
+def _reading(
+    tax_lines: Sequence[TaxLine], subtotal: int, due: int, points: int
+) -> Reading | None:
+    """How the items, at ``subtotal``, come to the amount due, if they do.
+
+    - included: they are the amount due (tax inside the prices, or none);
+    - added: one printed rate added on top, which a client adds itself;
+    - spread: tax printed with no rate, to be spread into the costs;
+    - spread by rate: tax at printed rates, each into the items its base names;
+    - before points: the amount due was read before points were taken off.
+    """
+    complete = _complete_tax_lines(tax_lines)
+    includes_tax = _prices_include_tax(
+        tax_lines, complete, (subtotal, subtotal + points)
+    )
+    rates = sorted({line.rate for line in tax_lines if line.rate})
+    rated_tax = sum(line.tax_amount or 0 for line in tax_lines if line.rate is not None)
+    unrated_tax = sum(line.tax_amount or 0 for line in tax_lines)
+    if subtotal == due and includes_tax is not False:
+        return "included"
+    if (
+        len(rates) == 1
+        and includes_tax is not True
+        and due - subtotal in _added_tax(subtotal, rates[0])
+    ):
+        printed = [
+            line.tax_amount
+            for line in tax_lines
+            if line.rate == rates[0] and line.tax_amount is not None
+        ]
+        # A printed tax amount must be what was added, to the unit.
+        if not printed or due - subtotal == sum(printed):
+            return "added"
+    if (
+        not any(line.rate is not None for line in tax_lines)
+        and unrated_tax
+        and subtotal
+        and subtotal + unrated_tax == due
+    ):
+        return "spread"
+    if includes_tax is False and complete is not None and subtotal + rated_tax == due:
+        return "spread by rate"
+    if (
+        points
+        and includes_tax is not False
+        and subtotal == due - points
+        and due - points > 0
+    ):
+        return "before points"
     return None
 
 
 def _tax_by_items(
-    lines: Sequence[TaxLine], nets: Mapping[int, int]
+    lines: Sequence[TaxLine], nets: Mapping[int, int], tolerance: int, budget: _Budget
 ) -> list[tuple[int, tuple[int, ...]]] | None:
     """Each printed rate's tax with the items it applies to, found from its base.
 
     The items of every rate but the largest are the one set whose costs add up
     to that rate's printed base; the largest rate takes the rest, which must add
-    up to its base too. ``lines`` are the complete tax lines. None when the
-    bases do not single out the items.
+    up to its base too. A store may round each rate's share of a deduction
+    separately, so a base is matched within ``tolerance``, nearest first.
+    ``lines`` are the complete tax lines. None when the bases do not single out
+    the items.
     """
     lines = sorted(lines, key=lambda line: line.taxable_amount or 0)
     remaining = tuple(order for order, net in nets.items() if net > 0)
     taxed: list[tuple[int, tuple[int, ...]]] = []
     for line in lines[:-1]:
-        items = _unique_subset(remaining, nets, line.taxable_amount or 0)
+        base = line.taxable_amount or 0
+        targets = [base] + [
+            target
+            for distance in range(1, tolerance + 1)
+            for target in (base - distance, base + distance)
+        ]
+        items = next(
+            (
+                found
+                for target in targets
+                if target > 0
+                and (found := _unique_subset(remaining, nets, target, budget))
+                is not None
+            ),
+            None,
+        )
         if items is None:
             return None
         taxed.append((line.tax_amount or 0, items))
@@ -550,7 +740,8 @@ def _tax_by_items(
     largest = lines[-1]
     if (
         not remaining
-        or sum(nets[order] for order in remaining) != largest.taxable_amount
+        or abs(sum(nets[order] for order in remaining) - (largest.taxable_amount or 0))
+        > tolerance
     ):
         return None
     taxed.append((largest.tax_amount or 0, remaining))
@@ -586,6 +777,120 @@ def _bases_disagree(
     return bases - total
 
 
+def _rate_groups_gap(
+    tax_lines: Sequence[TaxLine],
+    nets: Mapping[int, int],
+    nets_before_points: Mapping[int, int],
+    total: int,
+    points: int,
+    tolerance: int,
+) -> int:
+    """How far the costs are from splitting into the printed per-rate bases, or 0.
+
+    Checked when prices include tax and every rate prints its base: some items
+    must add up to each smaller rate's base (the largest takes the rest),
+    within one unit per deduction spread over several items, since a till may
+    round each rate's share of it separately.
+    """
+    rated = [line for line in tax_lines if line.rate is not None]
+    if len({line.rate for line in rated}) < 2 or any(
+        line.taxable_amount is None for line in rated
+    ):
+        return 0
+    targets: dict[Fraction, int] = {}
+    with_tax: dict[Fraction, int] = {}
+    for line in rated:
+        rate = line.rate or Fraction(0)
+        targets[rate] = targets.get(rate, 0) + (line.taxable_amount or 0)
+        with_tax[rate] = (
+            with_tax.get(rate, 0) + (line.taxable_amount or 0) + (line.tax_amount or 0)
+        )
+    costs = nets
+    if sum(targets.values()) == total + points and points:
+        # Points paid after tax: the bases are the items before them.
+        costs = nets_before_points
+    elif sum(targets.values()) != total:
+        if (
+            all(line.tax_amount is not None for line in rated)
+            and sum(with_tax.values()) == total
+        ):
+            targets = with_tax
+        else:
+            return 0
+    for target in sorted(targets.values())[:-1]:
+        distance = _nearest_reachable(costs.values(), target)
+        if distance is not None and distance > tolerance:
+            return distance
+    return 0
+
+
+def _tax_read_as_surcharge(
+    tax_lines: Sequence[TaxLine],
+    allocated: Sequence[AllocatedAdjustment],
+    subtotal: int,
+) -> int | None:
+    """The surcharge that repeats the printed tax lines, if one does.
+
+    Tax added on top is copied into the tax lines; a surcharge for exactly the
+    printed tax, on no particular items, while the bases add up to the items
+    without it, is that tax read a second time.
+    """
+    complete = _complete_tax_lines(tax_lines)
+    if complete is None:
+        return None
+    positive = [line for line in complete if line.rate]
+    if not positive or any(
+        _tax_form(
+            line.rate or Fraction(0), line.taxable_amount or 0, line.tax_amount or 0
+        )
+        != "on top"
+        for line in positive
+    ):
+        return None
+    tax = sum(line.tax_amount or 0 for line in complete)
+    bases = sum(line.taxable_amount or 0 for line in complete)
+    for index, entry in enumerate(allocated):
+        adjustment = entry.adjustment
+        if (
+            adjustment.kind == "surcharge"
+            and adjustment.percentage is None
+            and adjustment.eligible_subtotal is None
+            and not adjustment.item_orders
+            and adjustment.amount == tax
+            and bases == subtotal - adjustment.amount
+        ):
+            return index
+    return None
+
+
+def _unresolve(entry: AllocatedAdjustment) -> AllocatedAdjustment:
+    return AllocatedAdjustment(
+        entry.adjustment, "unresolved", entry.adjustment.item_orders, {}
+    )
+
+
+def _chosen_status(
+    adjustment: Adjustment,
+    scope: tuple[int, ...],
+    nets: Mapping[int, int],
+    prices: Mapping[int, int],
+) -> ScopeStatus:
+    """A chosen scope is verified, unless the printed base or percent disagrees with it."""
+    if (
+        adjustment.eligible_subtotal is not None
+        and adjustment.eligible_subtotal != sum(nets[order] for order in scope)
+    ):
+        return "assumed"
+    if adjustment.percentage is not None and not any(
+        _percent_fits_lines(
+            adjustment.percentage, [basis[order] for order in scope], adjustment.amount
+        )
+        for basis in (prices, nets)
+    ):
+        return "assumed"
+    return "verified"
+
+
 def allocate(
     receipt: PrintedReceipt, scopes: Sequence[tuple[int, ...]] | None = None
 ) -> Allocation:
@@ -597,6 +902,7 @@ def allocate(
     """
     if scopes is not None and len(scopes) != len(receipt.adjustments):
         raise ValueError("Choose exactly one scope for every adjustment.")
+    budget = _Budget()
     prices = {item.item_order: item.price for item in receipt.items}
     nets = dict(prices)
     item_specific: set[int] = set()
@@ -605,9 +911,12 @@ def allocate(
     for index, adjustment in enumerate(receipt.adjustments):
         status: ScopeStatus
         if scopes is None:
-            status, scope = _resolve_scope(adjustment, nets, prices, item_specific)
+            status, scope = _resolve_scope(
+                adjustment, nets, prices, item_specific, budget
+            )
         else:
-            status, scope = "verified", _chosen_scope(adjustment, scopes[index], nets)
+            scope = _chosen_scope(adjustment, scopes[index], nets)
+            status = _chosen_status(adjustment, scope, nets, prices)
         if status == "unresolved":
             allocated.append(AllocatedAdjustment(adjustment, status, scope, {}))
             continue
@@ -618,97 +927,121 @@ def allocate(
             item_specific.update(scope)
         allocations = _apply(adjustment, scope, nets)
         allocated.append(AllocatedAdjustment(adjustment, status, scope, allocations))
+    return _reconcile(receipt, prices, nets, allocated, budget)
 
+
+def _reconcile(
+    receipt: PrintedReceipt,
+    prices: Mapping[int, int],
+    nets: dict[int, int],
+    allocated: list[AllocatedAdjustment],
+    budget: _Budget,
+) -> Allocation:
+    due = receipt.amount_due
     display_rate = _display_rate(receipt.tax_lines)
-    # Nothing is allocated unless everything reconciles. Every cost is then 0,
-    # which a client that checks the costs against the total always rejects:
-    # printed prices could add up to a misread total and be filed as is.
-    unallocated = dict.fromkeys(prices, 0)
-    if any(entry.status == "unresolved" for entry in allocated):
+
+    def outcome(
+        status: ReceiptStatus,
+        entries: Sequence[AllocatedAdjustment] = allocated,
+        difference: int = 0,
+    ) -> Allocation:
+        # Nothing is allocated unless everything reconciles. Every cost is then
+        # 0, which a client that checks the costs against the total always
+        # rejects: printed prices could add up to a misread total.
         return Allocation(
-            status="needs_review",
-            costs=unallocated,
-            total=receipt.amount_due,
+            status=status,
+            costs=dict.fromkeys(prices, 0),
+            total=due,
             tax_rate=display_rate,
             tax_added=False,
-            difference=0,
-            adjustments=tuple(allocated),
+            difference=difference,
+            adjustments=tuple(entries),
         )
 
-    subtotal = sum(nets.values())
-    due = receipt.amount_due
     points = sum(
         adjustment.amount
         for adjustment in receipt.adjustments
         if adjustment.kind == "points"
     )
-    rates = sorted({line.rate for line in receipt.tax_lines if line.rate is not None})
-    unrated_tax = sum(line.tax_amount or 0 for line in receipt.tax_lines)
-    complete = _complete_tax_lines(receipt.tax_lines)
-    includes_tax = _prices_include_tax(complete, (subtotal, subtotal + points))
-    printed_tax = sum(
-        line.tax_amount or 0 for line in receipt.tax_lines if line.rate is not None
-    )
+    if any(entry.status == "unresolved" for entry in allocated):
+        # Whichever items the unsettled lines cover, the items come to the same
+        # subtotal. If even that cannot add up, the receipt was misread.
+        subtotal = sum(prices.values()) + sum(
+            adjustment.amount if adjustment.kind == "surcharge" else -adjustment.amount
+            for adjustment in receipt.adjustments
+        )
+        if _reading(receipt.tax_lines, subtotal, due, points) is None:
+            return outcome("mismatch", difference=due - subtotal)
+        return outcome("needs_review")
 
-    total: int | None = None
-    tax_added = False
-    if subtotal == due and includes_tax is not False:
-        total = due
-    elif (
-        len(rates) == 1
-        and includes_tax is not True
-        and due - subtotal in _added_tax(subtotal, rates[0])
-    ):
+    subtotal = sum(nets.values())
+    if (
+        repeated := _tax_read_as_surcharge(receipt.tax_lines, allocated, subtotal)
+    ) is not None:
+        entries = list(allocated)
+        entries[repeated] = _unresolve(entries[repeated])
+        return outcome("needs_review", entries)
+
+    reading = _reading(receipt.tax_lines, subtotal, due, points)
+    total, tax_added = due, False
+    if reading is None:
+        # The amount due less the items, or, when they agree but the printed
+        # tax lines say the prices exclude tax, the tax that is missing.
+        rated_tax = sum(
+            line.tax_amount or 0 for line in receipt.tax_lines if line.rate is not None
+        )
+        return outcome("mismatch", difference=due - subtotal or -rated_tax)
+    if reading == "added":
         # One printed rate added on top: the costs stay before tax and the
         # client adds the rate, exactly as it does for such receipts today.
-        total, tax_added, display_rate = due, True, rates[0]
-    elif not rates and unrated_tax and subtotal and subtotal + unrated_tax == due:
+        tax_added = True
+        display_rate = sorted({line.rate for line in receipt.tax_lines if line.rate})[0]
+    elif reading == "spread":
         # Tax added on top with no printed rate: no rate for the client to add,
-        # so the printed tax goes into the costs in proportion. With a printed
-        # rate that does not fit, some items are taxed differently and this
-        # would misprice them, so that case stays a mismatch.
-        for order, share in split_proportionally(unrated_tax, nets).items():
+        # so the printed tax goes into the costs in proportion.
+        tax = sum(line.tax_amount or 0 for line in receipt.tax_lines)
+        for order, share in split_proportionally(tax, nets).items():
             nets[order] += share
-        total = due
-    elif (
-        includes_tax is False
-        and complete is not None
-        and subtotal + printed_tax == due
-        and (taxed := _tax_by_items(complete, nets)) is not None
-    ):
-        # Tax added on top at printed rates the client cannot add itself
-        # (several rates, or rounding it would not reproduce): each rate's tax
-        # goes into the items its printed base singles out.
+    elif reading == "spread by rate":
+        # Tax added on top at printed rates the client cannot add itself: each
+        # rate's tax goes into the items its printed base singles out.
+        complete = _complete_tax_lines(receipt.tax_lines) or []
+        spanning = sum(1 for entry in allocated if len(entry.allocations) > 1)
+        taxed = _tax_by_items(complete, nets, spanning, budget)
+        if taxed is None:
+            return outcome("mismatch", difference=due - subtotal)
         for tax, items in taxed:
             shares = split_proportionally(tax, {order: nets[order] for order in items})
             for order, share in shares.items():
                 nets[order] += share
-        total = due
-    elif (
-        points
-        and includes_tax is not False
-        and subtotal == due - points
-        and due - points > 0
-    ):
+    elif reading == "before points":
         # The model copied the total printed before the points were taken off.
         total = due - points
 
-    if total is None:
-        # The amount due less the items, or, when they agree but the printed
-        # tax lines say the prices exclude tax, the tax that is missing.
-        difference = due - subtotal or -printed_tax
-    else:
-        difference = _bases_disagree(receipt.tax_lines, subtotal, total, points)
-    if total is None or difference:
-        return Allocation(
-            status="mismatch",
-            costs=unallocated,
-            total=due,
-            tax_rate=display_rate,
-            tax_added=False,
-            difference=difference,
-            adjustments=tuple(allocated),
-        )
+    if difference := _bases_disagree(receipt.tax_lines, subtotal, total, points):
+        return outcome("mismatch", difference=difference)
+    if reading in ("included", "before points"):
+        nets_before_points = dict(nets)
+        for entry in allocated:
+            if entry.adjustment.kind == "points":
+                for order, share in entry.allocations.items():
+                    nets_before_points[order] += share
+        spanning = sum(1 for entry in allocated if len(entry.allocations) > 1)
+        if gap := _rate_groups_gap(
+            receipt.tax_lines, nets, nets_before_points, total, points, spanning
+        ):
+            # No split of the costs matches the printed per-rate bases. Lines
+            # placed on the model's word go back to a person; otherwise the
+            # receipt was misread.
+            if any(entry.status == "assumed" for entry in allocated):
+                return outcome(
+                    "needs_review",
+                    [
+                        _unresolve(entry) if entry.status == "assumed" else entry
+                        for entry in allocated
+                    ],
+                )
+            return outcome("mismatch", difference=gap)
     return Allocation(
         status="reconciled",
         costs=nets,
@@ -767,6 +1100,12 @@ def corrected_receipt(
     """
     if not items:
         raise ValueError("A receipt needs at least one item.")
+    if (
+        len(items) > MAX_ITEMS
+        or len(adjustments) > MAX_ADJUSTMENTS
+        or len(tax_lines) > MAX_TAX_LINES
+    ):
+        raise ValueError("Too many lines for one receipt.")
     orders = [order for order, _ in items]
     if len(set(orders)) != len(orders):
         raise ValueError("Each item needs its own item_order.")
@@ -797,6 +1136,9 @@ def corrected_receipt(
             return None
         return abs(to_minor_units(amount, places)) or None
 
+    def amount_or_none(amount: float | None) -> int | None:
+        return None if amount is None else abs(to_minor_units(amount, places))
+
     return PrintedReceipt(
         items=tuple(
             Item(item_order=order, price=to_minor_units(price, places))
@@ -816,7 +1158,7 @@ def corrected_receipt(
             TaxLine(
                 rate=_rate(rate),
                 taxable_amount=positive_or_none(base),
-                tax_amount=positive_or_none(tax),
+                tax_amount=amount_or_none(tax),
             )
             for rate, base, tax in tax_lines
         ),

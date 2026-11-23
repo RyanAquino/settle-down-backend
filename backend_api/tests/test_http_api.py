@@ -426,6 +426,31 @@ class TestDiscountedReceipts:
         assert body["receipt_date"] == "2026-11-23T06:16:00Z"
 
 
+class TestSurcharges:
+    def test_a_surcharge_share_is_not_counted_as_a_discount(self, client, ocr_agent):
+        service = scans.vector("service_charge_with_tax_added_on_top")
+
+        body = _scan_response(client, ocr_agent, scans.scan(service))
+
+        assert [item["cost"] for item in body["receipt_items"]] == [
+            13200.0,
+            5280.0,
+            605.0,
+        ]
+        assert {item["discount"] for item in body["receipt_items"]} == {0.0}
+        assert _accepted_by_installed_app(body)
+
+    def test_discounts_stay_exact_when_tax_is_spread_into_costs(
+        self, client, ocr_agent
+    ):
+        spread = scans.vector("coupon_the_store_split_per_tax_group")
+
+        body = _scan_response(client, ocr_agent, scans.scan(spread))
+
+        assert [item["cost"] for item in body["receipt_items"]] == [1234.0, 942.0]
+        assert [item["discount"] for item in body["receipt_items"]] == [58.0, 43.0]
+
+
 class TestFailedReads:
     def test_a_read_that_fails_after_a_usable_attempt_answers_with_it(
         self, client, ocr_agent, caplog
@@ -640,6 +665,49 @@ class TestCorrections:
         result = self._post(client, _correction(body, adjustments=adjustments)).json()
 
         assert [item["cost"] for item in result["receipt_items"]] == [83.0, 415.0]
+
+    @pytest.mark.parametrize(
+        ("name", "line", "chosen"),
+        [
+            # 10% of 300 is not the printed 50.
+            ("percent_discount_on_named_items", 0, [1]),
+            # 750 + 1,100 is not the printed base 1,250.
+            ("base_recovered_by_subset_search", 0, [3, 4]),
+        ],
+    )
+    def test_a_choice_the_printed_numbers_contradict_is_marked_for_checking(
+        self, client, ocr_agent, name, line, chosen
+    ):
+        body = self._review(client, ocr_agent, name)
+        adjustments = body["adjustments"]
+        adjustments[line]["item_orders"] = chosen
+
+        result = self._post(client, _correction(body, adjustments=adjustments)).json()
+
+        assert result["reconciliation"]["status"] == "reconciled"
+        assert result["adjustments"][line]["status"] == "assumed"
+
+    def test_a_choice_the_per_rate_bases_contradict_goes_back_to_review(
+        self, client, ocr_agent
+    ):
+        body = self._review(client, ocr_agent, "sugi")
+        adjustments = body["adjustments"]
+        # The 8% line on items whose costs do not make the printed 2,909, and the
+        # 15% line on an item 15% of which is not 294: the snack's share then no
+        # longer matches its printed 8% base.
+        adjustments[2]["item_orders"] = [1, 2, 5]
+        adjustments[1]["item_orders"] = [5]
+
+        result = self._post(client, _correction(body, adjustments=adjustments)).json()
+
+        assert result["reconciliation"]["status"] == "needs_review"
+        assert [entry["status"] for entry in result["adjustments"]] == [
+            "verified",
+            "unresolved",
+            "unresolved",
+            "verified",
+        ]
+        assert {item["cost"] for item in result["receipt_items"]} == {0.0}
 
     @pytest.mark.parametrize(
         ("change", "message"),

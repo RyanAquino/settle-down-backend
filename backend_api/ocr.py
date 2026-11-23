@@ -91,7 +91,8 @@ def _reread_message(allocation: Allocation, decimal_places: int) -> str:
         "Read the receipt again. "
         "Copy every purchased line and every discount, coupon, points and "
         "surcharge line exactly once, as printed, and make sure amount_due is the "
-        "final amount paid. Do not add a line that is not printed to close the gap."
+        "final amount paid. Tax lines belong in tax_lines, never in adjustments. "
+        "Do not add a line that is not printed to close the gap."
     )
 
 

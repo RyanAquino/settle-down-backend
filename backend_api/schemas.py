@@ -161,10 +161,12 @@ class ReceiptCorrectionItemIn(Schema):
 
 
 class ReceiptCorrectionAdjustmentIn(Schema):
-    printed_label: str
+    printed_label: str = Field(max_length=200)
     kind: AdjustmentKind
     amount: FiniteFloat
-    item_orders: list[int] = Field(description="The items this adjustment applies to")
+    item_orders: list[int] = Field(
+        max_length=500, description="The items this adjustment applies to"
+    )
     percentage: FiniteFloat | None = Field(default=None)
     eligible_subtotal: FiniteFloat | None = Field(default=None)
 
@@ -177,9 +179,11 @@ class ReceiptCorrectionTaxLineIn(Schema):
 
 class ReceiptCorrectionIn(Schema):
     decimal_places: int
-    receipt_items: list[ReceiptCorrectionItemIn]
-    adjustments: list[ReceiptCorrectionAdjustmentIn]
-    tax_lines: list[ReceiptCorrectionTaxLineIn] = Field(default_factory=list)
+    receipt_items: list[ReceiptCorrectionItemIn] = Field(max_length=500)
+    adjustments: list[ReceiptCorrectionAdjustmentIn] = Field(max_length=100)
+    tax_lines: list[ReceiptCorrectionTaxLineIn] = Field(
+        default_factory=list, max_length=20
+    )
     total_amount: FiniteFloat = Field(description="The total_amount the scan returned")
 
 

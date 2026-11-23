@@ -6,11 +6,13 @@ runs through conversion, scope resolution, allocation and reconciliation, and
 its result is checked against a restatement of the installed app's own check.
 """
 
+import time
 from fractions import Fraction
 
 import pytest
 
 from backend_api.receipt_allocation import (
+    MAX_ITEMS,
     Adjustment,
     Item,
     PrintedReceipt,
@@ -18,6 +20,7 @@ from backend_api.receipt_allocation import (
     TranscriptionError,
     allocate,
     allocate_scan,
+    corrected_receipt,
     decimal_places_for,
     from_minor_units,
     printed_receipt,
@@ -138,6 +141,11 @@ class TestMinorUnits:
         assert from_minor_units(1299, 2) == 12.99
         assert from_minor_units(5809, 0) == 5809.0
 
+    def test_an_amount_beyond_any_receipt_is_rejected(self):
+        # Keeps every sum a finite float in the response.
+        with pytest.raises(TranscriptionError, match="larger than any receipt"):
+            to_minor_units(1e13, 0)
+
     def test_an_amount_finer_than_the_currency_is_rejected(self):
         with pytest.raises(TranscriptionError, match="more than 0 decimal places"):
             to_minor_units(12.5, 0)
@@ -173,6 +181,10 @@ class TestTranscriptionErrors:
     def test_negative_price(self):
         with pytest.raises(TranscriptionError, match="negative price"):
             printed_receipt(self._vector(items=[987, -347, 2310, 1958, 767, 278]))
+
+    def test_more_lines_than_any_receipt(self):
+        with pytest.raises(TranscriptionError, match="Too many lines"):
+            printed_receipt(self._vector(items=[1] * (MAX_ITEMS + 1)))
 
     @pytest.mark.parametrize("amount_due", [0, -5809])
     def test_non_positive_amount_due(self, amount_due):
@@ -248,19 +260,43 @@ class TestScopeEdges:
             "unresolved",
         ]
 
-    def test_the_subset_search_gives_up_on_very_long_receipts(self):
-        # Powers of two reach every sum, so the search hits its bound first.
+    def test_a_unique_base_is_found_among_many_items(self):
+        # Powers of two reach each sum one way only.
         prices = [2**bit for bit in range(16)]
         discount = Adjustment(
-            label="対象商品割引",
-            kind="discount",
-            amount=1,
-            eligible_subtotal=40_000,
+            label="対象商品割引", kind="discount", amount=1, eligible_subtotal=40_000
         )
 
         result = allocate(_receipt(prices, [discount], sum(prices) - 1))
 
+        assert result.status == "reconciled"
+        (entry,) = result.adjustments
+        assert {prices[order - 1] for order in entry.item_orders} == {
+            2**bit for bit in range(16) if 40_000 >> bit & 1
+        }
+
+    def test_the_subset_search_gives_up_once_its_work_runs_out(self):
+        # Every sum up to 40,000 is reachable many ways: about 16 million steps.
+        prices = list(range(1, 401))
+        discount = Adjustment(
+            label="対象商品割引", kind="discount", amount=1, eligible_subtotal=40_000
+        )
+
+        started = time.monotonic()
+        result = allocate(_receipt(prices, [discount], sum(prices) - 1))
+
+        assert time.monotonic() - started < 5
         assert result.status == "needs_review"
+        assert [entry.status for entry in result.adjustments] == ["unresolved"]
+
+    def test_a_base_larger_than_every_item_together_is_unresolved(self):
+        discount = Adjustment(
+            label="割引", kind="discount", amount=10, eligible_subtotal=5000
+        )
+
+        result = allocate(_receipt([1000, 2000], [discount], 2990))
+
+        assert [entry.status for entry in result.adjustments] == ["unresolved"]
 
     def test_tax_rates_are_exact_fractions(self):
         tax = TaxLine(rate=Fraction(33, 4), taxable_amount=None, tax_amount=None)
@@ -270,3 +306,15 @@ class TestScopeEdges:
         assert result.status == "reconciled"
         assert result.tax_added
         assert result.tax_rate == Fraction(33, 4)
+
+
+class TestCorrectedReceipt:
+    def test_more_lines_than_any_receipt_are_refused(self):
+        with pytest.raises(ValueError, match="Too many lines"):
+            corrected_receipt(
+                decimal_places=0,
+                items=[(order, 100) for order in range(1, MAX_ITEMS + 2)],
+                adjustments=[],
+                tax_lines=[],
+                amount_due=100,
+            )

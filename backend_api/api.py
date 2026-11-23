@@ -171,15 +171,26 @@ def post_receipt_allocation(
 def _costs(
     receipt: PrintedReceipt, allocation: Allocation
 ) -> list[tuple[float, float]]:
-    """Each item's (cost, discount): what it cost and everything taken off it."""
+    """Each item's (cost, discount): what it cost and what discounts took off it.
+
+    The discount is the item's share of every discount and points line, so it
+    stays exact when tax or a surcharge was spread into the cost.
+    """
     places = receipt.decimal_places
     reconciled = allocation.status == "reconciled"
-    result = []
-    for item in receipt.items:
-        cost = allocation.costs[item.item_order]
-        saved = max(item.price - cost, 0) if reconciled else 0
-        result.append((from_minor_units(cost, places), from_minor_units(saved, places)))
-    return result
+    saved = dict.fromkeys(allocation.costs, 0)
+    if reconciled:
+        for entry in allocation.adjustments:
+            if entry.adjustment.kind != "surcharge":
+                for order, share in entry.allocations.items():
+                    saved[order] += share
+    return [
+        (
+            from_minor_units(allocation.costs[item.item_order], places),
+            from_minor_units(saved[item.item_order], places),
+        )
+        for item in receipt.items
+    ]
 
 
 def _adjustments(

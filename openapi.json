@@ -594,6 +594,7 @@
       "ReceiptCorrectionAdjustmentIn": {
         "properties": {
           "printed_label": {
+            "maxLength": 200,
             "title": "Printed Label",
             "type": "string"
           },
@@ -615,6 +616,7 @@
             "items": {
               "type": "integer"
             },
+            "maxItems": 500,
             "title": "Item Orders",
             "type": "array"
           },
@@ -660,6 +662,7 @@
             "items": {
               "$ref": "#/components/schemas/ReceiptCorrectionItemIn"
             },
+            "maxItems": 500,
             "title": "Receipt Items",
             "type": "array"
           },
@@ -667,6 +670,7 @@
             "items": {
               "$ref": "#/components/schemas/ReceiptCorrectionAdjustmentIn"
             },
+            "maxItems": 100,
             "title": "Adjustments",
             "type": "array"
           },
@@ -674,6 +678,7 @@
             "items": {
               "$ref": "#/components/schemas/ReceiptCorrectionTaxLineIn"
             },
+            "maxItems": 20,
             "title": "Tax Lines",
             "type": "array"
           },
