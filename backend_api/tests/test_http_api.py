@@ -7,6 +7,7 @@ the OCR agent and image hosts (patched per test).
 """
 
 import logging
+from datetime import datetime
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -180,6 +181,8 @@ RECEIPT = ReceiptData(
     jp_shop_name="サンプルマート",
     tax_percentage=10,
     total_amount=330,
+    # Naive on purpose: the model reports the receipt's JST wall time.
+    receipt_date=datetime(2026, 5, 30, 12, 34, 56),  # noqa: DTZ001
 )
 
 
@@ -196,6 +199,34 @@ def _upload():
 
 
 class TestReceiptEndpoint:
+    def test_response_body_is_the_scan_contract(self, client, ocr_agent):
+        """The exact body the installed app parses: every field, nothing else."""
+        with patch(
+            "backend_api.api.cloudinary_upload_file",
+            return_value="https://res.cloudinary.com/r.jpg",
+        ):
+            response = client.post(RECEIPT_URL, {"file": _upload()}, **AUTH)
+
+        assert response.status_code == 200
+        assert response.json() == {
+            "receipt_items": [
+                {
+                    "english_name": "Onigiri",
+                    "japanese_name": "おにぎり",
+                    "item_order": 1,
+                    "cost": 300.0,
+                    "quantity": 2,
+                    "discount": 0.0,
+                }
+            ],
+            "en_shop_name": "Sample Mart",
+            "jp_shop_name": "サンプルマート",
+            "tax_percentage": 10.0,
+            "total_amount": 330.0,
+            "receipt_date": "2026-05-30T12:34:56",
+            "receipt_image_url": "https://res.cloudinary.com/r.jpg",
+        }
+
     def test_extracts_receipt_and_hosts_image_on_cloudinary(self, client, ocr_agent):
         with (
             patch(

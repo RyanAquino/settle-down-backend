@@ -184,34 +184,77 @@
   },
   "components": {
     "schemas": {
+      "OCRReceiptItemOut": {
+        "properties": {
+          "english_name": {
+            "description": "The item name in English",
+            "title": "English Name",
+            "type": "string"
+          },
+          "japanese_name": {
+            "description": "The item name as printed on the receipt",
+            "title": "Japanese Name",
+            "type": "string"
+          },
+          "item_order": {
+            "description": "The position of the item on the receipt",
+            "title": "Item Order",
+            "type": "integer"
+          },
+          "cost": {
+            "description": "The line price after any discount, for the quantity shown",
+            "title": "Cost",
+            "type": "number"
+          },
+          "quantity": {
+            "description": "The quantity purchased on this line",
+            "title": "Quantity",
+            "type": "integer"
+          },
+          "discount": {
+            "description": "The discount on this line, already subtracted from cost",
+            "title": "Discount",
+            "type": "number"
+          }
+        },
+        "required": [
+          "english_name",
+          "japanese_name",
+          "item_order",
+          "cost",
+          "quantity",
+          "discount"
+        ],
+        "title": "OCRReceiptItemOut",
+        "type": "object"
+      },
       "OCRReceiptPostOut": {
         "properties": {
           "receipt_items": {
+            "description": "The purchased items, in printed order",
             "items": {
-              "$ref": "#/components/schemas/ReceiptItemData"
+              "$ref": "#/components/schemas/OCRReceiptItemOut"
             },
             "title": "Receipt Items",
             "type": "array"
           },
           "en_shop_name": {
-            "description": "The name of the shop in the receipt in english",
+            "description": "The shop name in English",
             "title": "En Shop Name",
             "type": "string"
           },
           "jp_shop_name": {
-            "description": "The name of the shop in the receipt in japanese",
+            "description": "The shop name as printed on the receipt",
             "title": "Jp Shop Name",
             "type": "string"
           },
           "tax_percentage": {
-            "default": 0,
-            "description": "The tax percentage of the receipt if applicable",
+            "description": "The printed tax rate, or 0",
             "title": "Tax Percentage",
             "type": "number"
           },
           "total_amount": {
-            "default": 0,
-            "description": "The total amount of all items in the receipt",
+            "description": "The printed total of the receipt",
             "title": "Total Amount",
             "type": "number"
           },
@@ -231,54 +274,12 @@
           "receipt_items",
           "en_shop_name",
           "jp_shop_name",
+          "tax_percentage",
+          "total_amount",
+          "receipt_date",
           "receipt_image_url"
         ],
         "title": "OCRReceiptPostOut",
-        "type": "object"
-      },
-      "ReceiptItemData": {
-        "description": "Receipt Item model for each item in the receipt.",
-        "properties": {
-          "english_name": {
-            "description": "The name of the purchased item in english in the receipt",
-            "title": "English Name",
-            "type": "string"
-          },
-          "japanese_name": {
-            "description": "The name of the purchased item in Japanese in the receipt",
-            "title": "Japanese Name",
-            "type": "string"
-          },
-          "item_order": {
-            "description": "The order of the items in the receipt",
-            "title": "Item Order",
-            "type": "integer"
-          },
-          "cost": {
-            "description": "The final line price for this item after any discount, for the quantity shown",
-            "title": "Cost",
-            "type": "number"
-          },
-          "quantity": {
-            "description": "The quantity of the purchased item",
-            "title": "Quantity",
-            "type": "integer"
-          },
-          "discount": {
-            "default": 0,
-            "description": "The discount amount applied to this line, in the receipt's currency (0 if none). Already subtracted from cost",
-            "title": "Discount",
-            "type": "number"
-          }
-        },
-        "required": [
-          "english_name",
-          "japanese_name",
-          "item_order",
-          "cost",
-          "quantity"
-        ],
-        "title": "ReceiptItemData",
         "type": "object"
       },
       "Input": {

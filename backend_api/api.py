@@ -4,8 +4,9 @@ from django.http import HttpRequest
 from ninja import File, Router, UploadedFile
 from pydantic_ai import BinaryContent
 
+from backend_api.dto.receipt_item import ReceiptData
 from backend_api.ocr import get_openrouter_receipt_agent
-from backend_api.schemas import OCRReceiptPostOut
+from backend_api.schemas import OCRReceiptItemOut, OCRReceiptPostOut
 from backend_api.services import catbox_upload_file, cloudinary_upload_file
 
 logger = logging.getLogger(__name__)
@@ -70,4 +71,27 @@ async def post_ocr_receipt(
         )
         url = catbox_upload_file(file)
 
-    return OCRReceiptPostOut(**results.model_dump(), receipt_image_url=url)
+    return _receipt_response(results, url)
+
+
+def _receipt_response(receipt: ReceiptData, image_url: str) -> OCRReceiptPostOut:
+    """Map what the OCR model read onto the public scan response."""
+    return OCRReceiptPostOut(
+        receipt_items=[
+            OCRReceiptItemOut(
+                english_name=item.english_name,
+                japanese_name=item.japanese_name,
+                item_order=item.item_order,
+                cost=item.cost,
+                quantity=item.quantity,
+                discount=item.discount,
+            )
+            for item in receipt.receipt_items
+        ],
+        en_shop_name=receipt.en_shop_name,
+        jp_shop_name=receipt.jp_shop_name,
+        tax_percentage=receipt.tax_percentage,
+        total_amount=receipt.total_amount,
+        receipt_date=receipt.receipt_date,
+        receipt_image_url=image_url,
+    )

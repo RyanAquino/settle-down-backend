@@ -1,10 +1,7 @@
 from datetime import datetime
 
-from django.utils import timezone
 from ninja import Schema
 from pydantic import Field, FiniteFloat
-
-from backend_api.dto.receipt_item import ReceiptItemData
 
 
 class SettleUpGroupSchema(Schema):
@@ -41,23 +38,31 @@ class TransactionPostIn(Schema):
     )
 
 
+# The scan response is the public contract the mobile app is built against. It
+# is deliberately separate from the DTO the OCR model fills in, so rewording a
+# prompt-facing field description never changes the API contract.
+
+
+class OCRReceiptItemOut(Schema):
+    english_name: str = Field(description="The item name in English")
+    japanese_name: str = Field(description="The item name as printed on the receipt")
+    item_order: int = Field(description="The position of the item on the receipt")
+    cost: float = Field(
+        description="The line price after any discount, for the quantity shown"
+    )
+    quantity: int = Field(description="The quantity purchased on this line")
+    discount: float = Field(
+        description="The discount on this line, already subtracted from cost"
+    )
+
+
 class OCRReceiptPostOut(Schema):
-    receipt_items: list[ReceiptItemData]
-    en_shop_name: str = Field(
-        ..., description="The name of the shop in the receipt in english"
+    receipt_items: list[OCRReceiptItemOut] = Field(
+        description="The purchased items, in printed order"
     )
-    jp_shop_name: str = Field(
-        ..., description="The name of the shop in the receipt in japanese"
-    )
-    tax_percentage: float = Field(
-        default=0, description="The tax percentage of the receipt if applicable"
-    )
-    total_amount: float = Field(
-        default=0, description="The total amount of all items in the receipt"
-    )
-    receipt_date: datetime = Field(
-        default_factory=timezone.now, description="The date of the receipt"
-    )
-    receipt_image_url: str = Field(
-        ..., description="The url of the uploaded receipt image"
-    )
+    en_shop_name: str = Field(description="The shop name in English")
+    jp_shop_name: str = Field(description="The shop name as printed on the receipt")
+    tax_percentage: float = Field(description="The printed tax rate, or 0")
+    total_amount: float = Field(description="The printed total of the receipt")
+    receipt_date: datetime = Field(description="The date of the receipt")
+    receipt_image_url: str = Field(description="The url of the uploaded receipt image")
