@@ -186,14 +186,8 @@
     "schemas": {
       "OCRReceiptPostOut": {
         "properties": {
-          "receipt_adjustments": {
-            "items": {
-              "$ref": "#/components/schemas/ReceiptAdjustment"
-            },
-            "title": "Receipt Adjustments",
-            "type": "array"
-          },
           "receipt_items": {
+            "description": "The list of purchased items in the receipt",
             "items": {
               "$ref": "#/components/schemas/ReceiptItemData"
             },
@@ -212,7 +206,7 @@
           },
           "tax_percentage": {
             "default": 0,
-            "description": "The tax percentage of the receipt if applicable",
+            "description": "The single printed tax rate, or 0 for no rate or multiple rates",
             "title": "Tax Percentage",
             "type": "number"
           },
@@ -228,6 +222,28 @@
             "title": "Receipt Date",
             "type": "string"
           },
+          "receipt_discount": {
+            "default": 0,
+            "description": "Combined value of checkout coupons, excluding savings already in item costs",
+            "minimum": 0,
+            "title": "Receipt Discount",
+            "type": "number"
+          },
+          "points_redeemed": {
+            "default": 0,
+            "description": "Monetary value of loyalty points spent on this receipt",
+            "minimum": 0,
+            "title": "Points Redeemed",
+            "type": "number"
+          },
+          "split_rules": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/ReceiptSplitRules"
+              }
+            ],
+            "description": "Allocation detail when a deduction is scoped or several deductions share one total. Empty lists allocate the corresponding total across the basket."
+          },
           "receipt_image_url": {
             "description": "The url of the uploaded receipt image",
             "title": "Receipt Image Url",
@@ -241,38 +257,6 @@
           "receipt_image_url"
         ],
         "title": "OCRReceiptPostOut",
-        "type": "object"
-      },
-      "ReceiptAdjustment": {
-        "properties": {
-          "kind": {
-            "enum": [
-              "discount",
-              "points_redemption"
-            ],
-            "title": "Kind",
-            "type": "string"
-          },
-          "amount": {
-            "description": "Positive monetary value deducted once across the receipt",
-            "exclusiveMinimum": 0,
-            "title": "Amount",
-            "type": "number"
-          },
-          "item_orders": {
-            "description": "Eligible item_order values when identifiable; empty for the whole basket",
-            "items": {
-              "type": "integer"
-            },
-            "title": "Item Orders",
-            "type": "array"
-          }
-        },
-        "required": [
-          "kind",
-          "amount"
-        ],
-        "title": "ReceiptAdjustment",
         "type": "object"
       },
       "ReceiptItemData": {
@@ -294,7 +278,7 @@
             "type": "integer"
           },
           "cost": {
-            "description": "Line total for the quantity shown, after item-specific discounts and before receipt adjustments",
+            "description": "Line total for the quantity shown, after item-specific discounts and before basket coupons and points",
             "title": "Cost",
             "type": "number"
           },
@@ -318,6 +302,50 @@
           "quantity"
         ],
         "title": "ReceiptItemData",
+        "type": "object"
+      },
+      "ReceiptSplitRules": {
+        "description": "Optional detail for allocating each receipt total in printed order.",
+        "properties": {
+          "discounts": {
+            "items": {
+              "$ref": "#/components/schemas/SplitDeduction"
+            },
+            "title": "Discounts",
+            "type": "array"
+          },
+          "points": {
+            "items": {
+              "$ref": "#/components/schemas/SplitDeduction"
+            },
+            "title": "Points",
+            "type": "array"
+          }
+        },
+        "title": "ReceiptSplitRules",
+        "type": "object"
+      },
+      "SplitDeduction": {
+        "properties": {
+          "amount": {
+            "description": "Positive monetary value deducted once across the receipt",
+            "exclusiveMinimum": 0,
+            "title": "Amount",
+            "type": "number"
+          },
+          "item_orders": {
+            "description": "Eligible item_order values when identifiable; empty for the whole basket",
+            "items": {
+              "type": "integer"
+            },
+            "title": "Item Orders",
+            "type": "array"
+          }
+        },
+        "required": [
+          "amount"
+        ],
+        "title": "SplitDeduction",
         "type": "object"
       },
       "Input": {

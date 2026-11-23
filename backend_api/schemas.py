@@ -1,10 +1,9 @@
 from datetime import datetime
 
-from django.utils import timezone
 from ninja import Schema
 from pydantic import Field, FiniteFloat
 
-from backend_api.dto.receipt_item import ReceiptAdjustment, ReceiptItemData
+from backend_api.dto.receipt_item import ReceiptData, ReceiptSplitRules
 
 
 class SettleUpGroupSchema(Schema):
@@ -41,24 +40,10 @@ class TransactionPostIn(Schema):
     )
 
 
-class OCRReceiptPostOut(Schema):
-    receipt_adjustments: list[ReceiptAdjustment] = Field(default_factory=list)
-    receipt_items: list[ReceiptItemData]
-    en_shop_name: str = Field(
-        ..., description="The name of the shop in the receipt in english"
-    )
-    jp_shop_name: str = Field(
-        ..., description="The name of the shop in the receipt in japanese"
-    )
-    tax_percentage: float = Field(
-        default=0, description="The tax percentage of the receipt if applicable"
-    )
-    total_amount: float = Field(
-        default=0,
-        description="Final amount paid after all discounts and redeemed points",
-    )
-    receipt_date: datetime = Field(
-        default_factory=timezone.now, description="The date of the receipt"
+class OCRReceiptPostOut(ReceiptData):
+    split_rules: ReceiptSplitRules = Field(
+        default_factory=ReceiptSplitRules,
+        description="Allocation detail when a deduction is scoped or several deductions share one total. Empty lists allocate the corresponding total across the basket.",
     )
     receipt_image_url: str = Field(
         ..., description="The url of the uploaded receipt image"

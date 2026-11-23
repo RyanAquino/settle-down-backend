@@ -16,7 +16,8 @@ from django.core.files.uploadedfile import SimpleUploadedFile
 from django.test import Client, override_settings
 from pydantic_ai import BinaryContent
 
-from backend_api.dto.receipt_item import ReceiptData, ReceiptItemData
+from backend_api.dto.receipt_item import ReceiptItemData
+from backend_api.dto.scanned_receipt import ScannedReceipt
 
 TOKEN = "test-app-token"
 AUTH = {"HTTP_AUTHORIZATION": f"Bearer {TOKEN}"}
@@ -167,7 +168,7 @@ class TestSettleUpEndpoints:
         mock_settleup.requests.post.assert_not_called()
 
 
-RECEIPT = ReceiptData(
+RECEIPT = ScannedReceipt(
     receipt_items=[
         ReceiptItemData(
             english_name="Onigiri",
@@ -214,7 +215,8 @@ class TestReceiptEndpoint:
         data = response.json()
         assert data["receipt_image_url"] == "https://res.cloudinary.com/r.jpg"
         assert data["en_shop_name"] == "Sample Mart"
-        assert data["receipt_adjustments"] == []
+        assert data["receipt_discount"] == data["points_redeemed"] == 0
+        assert data["split_rules"] == {"discounts": [], "points": []}
         assert data["total_amount"] == 330
         assert [item["english_name"] for item in data["receipt_items"]] == ["Onigiri"]
         catbox.assert_not_called()
@@ -229,7 +231,7 @@ class TestReceiptEndpoint:
         self, client, ocr_agent
     ):
         fixture = Path(__file__).parent / "fixtures" / "sugi-receipt.json"
-        receipt = ReceiptData.model_validate_json(fixture.read_bytes())
+        receipt = ScannedReceipt.model_validate_json(fixture.read_bytes())
         ocr_agent.run.return_value = SimpleNamespace(output=receipt)
         with patch(
             "backend_api.api.cloudinary_upload_file",
@@ -247,17 +249,17 @@ class TestReceiptEndpoint:
             (767, 0),
             (278, 0),
         ]
-        coupon, points = data["receipt_adjustments"]
-        assert coupon == {
-            "kind": "discount",
-            "amount": 233,
-            "item_orders": [1, 2, 5, 6],
+        assert "receipt_adjustments" not in data
+        assert data["receipt_discount"] == 233
+        assert data["points_redeemed"] == 494
+        assert data["split_rules"] == {
+            "discounts": [{"amount": 233, "item_orders": [1, 2, 5, 6]}],
+            "points": [],
         }
-        assert points == {"kind": "points_redemption", "amount": 494, "item_orders": []}
         assert (
             sum(i["cost"] for i in data["receipt_items"])
-            - coupon["amount"]
-            - points["amount"]
+            - data["receipt_discount"]
+            - data["points_redeemed"]
             == data["total_amount"]
             == 5809
         )

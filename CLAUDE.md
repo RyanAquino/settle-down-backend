@@ -49,7 +49,7 @@ Request entry is `settledown/api.py`: one `NinjaAPI` protected by `GlobalAuth`, 
 It mounts two routers under `/api/`:
 
 - `/api/v1/receipts/receipt-items/` (`backend_api/api.py`) is **the OCR flow**.
-  An async `pydantic-ai` `Agent` from `get_openrouter_receipt_agent()` (OpenRouter, model `settings.OPENROUTER_MODEL`) reads the uploaded image with a strict `ToolOutput(ReceiptData)`, so the LLM must return a validated `ReceiptData` (items, EN/JP shop names, tax %, total, date) rather than free text.
+  An async `pydantic-ai` `Agent` from `get_openrouter_receipt_agent()` (OpenRouter, model `settings.OPENROUTER_MODEL`) reads the uploaded image with a strict `ToolOutput(ScannedReceipt)`. The OCR validator requests rereads for malformed extractions. After validation, `normalize_receipt` converts the printed checkout deductions into `ReceiptData.receipt_discount`, `ReceiptData.points_redeemed`, and separate allocation rules for the mobile split.
   It has one tool, `translate_jp_to_en_text` (Google Translate).
   The image is then uploaded to Cloudinary, falling back to catbox.moe on any exception (logged with its traceback).
   `get_receipt_agent()` is an alternate OpenAI/LLM7 factory (`gpt-5-mini`) wrapped by `backend_api/dto/llm7_override.py` (`LLM7ChatModel`), a parsing workaround; don't delete it as dead code.

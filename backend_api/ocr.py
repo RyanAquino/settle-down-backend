@@ -13,7 +13,6 @@ underlying model/provider.
 """
 
 import unicodedata
-from decimal import Decimal
 from functools import lru_cache
 
 from django.conf import settings
@@ -26,7 +25,7 @@ from pydantic_ai.providers.openai import OpenAIProvider
 from pydantic_ai.providers.openrouter import OpenRouterProvider
 
 from backend_api.dto.llm7_override import LLM7ChatModel
-from backend_api.dto.receipt_item import ReceiptData, ReceiptItemData
+from backend_api.dto.scanned_receipt import ScannedReceipt
 
 INSTRUCTIONS = """\
 You are an expert receipt-reading system for Japanese and English receipts.
@@ -44,38 +43,11 @@ You receive a receipt as an image. Extract the fields defined by the output sche
 """
 
 
-def _unique_eligible_items(
-    items: list[ReceiptItemData], eligible_subtotal: float
-) -> list[int]:
-    """Recover missing coupon scope only when the printed base has exactly one match."""
-    target = Decimal(str(eligible_subtotal))
-    # A bit per purchased line identifies a subset; None records multiple matches.
-    subsets: dict[Decimal, int | None] = {Decimal(0): 0}
-    for index, item in enumerate(items):
-        cost = Decimal(str(item.cost))
-        if cost <= 0 or cost > target:
-            continue
-        for subtotal, mask in list(subsets.items()):
-            value = subtotal + cost
-            if value <= target:
-                subsets[value] = (
-                    None if value in subsets or mask is None else mask | (1 << index)
-                )
-        # A partial basket can already prove ambiguity. Bound the work for long
-        # receipts with many distinct decimal sums; an uncertain scope stays empty.
-        if subsets.get(target, 0) is None or len(subsets) > 8192:
-            return []
-    match = subsets.get(target) or 0
-    return [item.item_order for i, item in enumerate(items) if match & (1 << i)]
+def validate_receipt_data(data: ScannedReceipt) -> ScannedReceipt:
+    """Request a reread for malformed lines, totals or checkout deductions.
 
-
-def validate_receipt_data(data: ReceiptData) -> ReceiptData:
-    """Catch gross extraction errors without rejecting plausible receipts.
-
-    Deliberately does NOT enforce that item costs sum to total_amount: JP
-    receipts mix 8%/10% tax (not representable here, per CLAUDE.md), so a strict
-    sum check would falsely reject common receipts and exhaust retries -> 500.
-    total_amount is trusted input; we only guard against obviously-broken output.
+    The mobile reader reconciles the printed amounts and tax. Coupon scope is
+    resolved from the accepted evidence during receipt normalization.
     """
     if data.total_amount < 0 or (
         data.total_amount == 0 and not data.receipt_adjustments
@@ -84,6 +56,8 @@ def validate_receipt_data(data: ReceiptData) -> ReceiptData:
             "total_amount must be the positive printed grand total unless fully discounted."
         )
     orders = {item.item_order for item in data.receipt_items}
+    if len(orders) != len(data.receipt_items):
+        raise ModelRetry("Give each purchased line a distinct item_order.")
     for adjustment in data.receipt_adjustments:
         label = "".join(unicodedata.normalize("NFKC", adjustment.printed_label).split())
         if any(mark in label for mark in ("1品割引", "単品割引", "1点割引")):
@@ -98,16 +72,6 @@ def validate_receipt_data(data: ReceiptData) -> ReceiptData:
             raise ModelRetry(
                 "Each eligible item_order must reference a purchased line exactly once."
             )
-        if adjustment.eligible_subtotal is not None:
-            marked = sum(
-                Decimal(str(i.cost))
-                for i in data.receipt_items
-                if i.item_order in eligible
-            )
-            if marked != Decimal(str(adjustment.eligible_subtotal)):
-                adjustment.item_orders = _unique_eligible_items(
-                    data.receipt_items, adjustment.eligible_subtotal
-                )
     if not data.receipt_items:
         raise ModelRetry(
             "No line items found; re-read the image and list each priced item."
@@ -121,7 +85,7 @@ def validate_receipt_data(data: ReceiptData) -> ReceiptData:
     return data
 
 
-def _build_agent(model: Model) -> Agent[None, ReceiptData]:
+def _build_agent(model: Model) -> Agent[None, ScannedReceipt]:
     """Assemble the receipt-reading agent around a provider-specific model.
 
     Everything except the underlying model/provider is shared: the output
@@ -129,7 +93,7 @@ def _build_agent(model: Model) -> Agent[None, ReceiptData]:
     """
     agent = Agent(
         model=model,
-        output_type=ToolOutput(ReceiptData, strict=True),
+        output_type=ToolOutput(ScannedReceipt, strict=True),
         instructions=INSTRUCTIONS,
         retries=2,
     )
@@ -156,7 +120,7 @@ def _build_agent(model: Model) -> Agent[None, ReceiptData]:
 
 
 @lru_cache(maxsize=1)
-def get_receipt_agent() -> Agent[None, ReceiptData]:
+def get_receipt_agent() -> Agent[None, ScannedReceipt]:
     """Build (once) the receipt agent backed by the OpenAI/LLM7 model.
 
     Talks to OpenAI by default; LLM7 is OpenAI-compatible, so pointing the
@@ -168,7 +132,7 @@ def get_receipt_agent() -> Agent[None, ReceiptData]:
 
 
 @lru_cache(maxsize=1)
-def get_openrouter_receipt_agent() -> Agent[None, ReceiptData]:
+def get_openrouter_receipt_agent() -> Agent[None, ScannedReceipt]:
     """Build (once) the receipt agent backed by OpenRouter.
 
     Uses a clean ``OpenAIChatModel``: OpenRouter returns OpenAI-compliant

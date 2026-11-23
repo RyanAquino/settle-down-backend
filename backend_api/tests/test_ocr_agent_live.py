@@ -2,7 +2,7 @@
 
 This makes a REAL network call to OpenRouter (and costs credits). Its purpose is
 to confirm the Gemini-via-OpenRouter path actually returns valid
-strict-structured output — i.e. ``ToolOutput(ReceiptData, strict=True)`` plus
+strict-structured output — i.e. ``ToolOutput(ScannedReceipt, strict=True)`` plus
 image input round-trips through ``settings.OPENROUTER_MODEL``, which a mocked
 unit test cannot verify.
 
@@ -30,7 +30,7 @@ from django.core.files.uploadedfile import SimpleUploadedFile
 from django.test import override_settings
 from pydantic_ai import BinaryContent
 
-from backend_api.dto.receipt_item import ReceiptData
+from backend_api.dto.scanned_receipt import ScannedReceipt
 from backend_api.ocr import get_openrouter_receipt_agent
 
 _FIXTURE_DIR = Path(__file__).parent / "fixtures"
@@ -81,7 +81,7 @@ def test_openrouter_live_extracts_valid_receipt():
     # If agent.run() returned at all, the strict ToolOutput schema was honored
     # by Gemini-via-OpenRouter and the output_validator passed. Assert the
     # extraction is structurally sane.
-    assert isinstance(data, ReceiptData)
+    assert isinstance(data, ScannedReceipt)
     assert data.total_amount > 0
     assert data.receipt_items, "expected at least one extracted line item"
 
@@ -122,14 +122,15 @@ def test_sugi_photo_extracts_the_printed_payment_and_coupon_scope(client):
     assert [(i["cost"], i["discount"]) for i in lines] == [
         (i["cost"], i["discount"]) for i in expected["receipt_items"]
     ]
-    assert len(data["receipt_adjustments"]) == 2
-    coupon, points = sorted(data["receipt_adjustments"], key=lambda a: a["kind"])
-    assert coupon["kind"] == "discount"
+    assert data["receipt_discount"] == 233
+    assert data["points_redeemed"] == 494
+    [coupon] = data["split_rules"]["discounts"]
     assert coupon["amount"] == 233
     assert set(coupon["item_orders"]) == {lines[i]["item_order"] for i in (0, 1, 4, 5)}
-    assert points == {"kind": "points_redemption", "amount": 494, "item_orders": []}
     assert (
-        sum(i["cost"] for i in lines) - coupon["amount"] - points["amount"]
+        sum(i["cost"] for i in lines)
+        - data["receipt_discount"]
+        - data["points_redeemed"]
         == data["total_amount"]
         == 5809
     )

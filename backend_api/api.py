@@ -5,6 +5,7 @@ from ninja import File, Router, UploadedFile
 from pydantic_ai import BinaryContent
 
 from backend_api.ocr import get_openrouter_receipt_agent
+from backend_api.receipt_normalization import normalize_receipt
 from backend_api.schemas import OCRReceiptPostOut
 from backend_api.services import catbox_upload_file, cloudinary_upload_file
 
@@ -32,7 +33,7 @@ async def post_ocr_receipt(
             ),
         ]
     )
-    results = result.output
+    receipt, split_rules = normalize_receipt(result.output)
 
     try:
         url = cloudinary_upload_file(file)
@@ -44,4 +45,6 @@ async def post_ocr_receipt(
         )
         url = catbox_upload_file(file)
 
-    return OCRReceiptPostOut(**results.model_dump(), receipt_image_url=url)
+    return OCRReceiptPostOut(
+        **receipt.model_dump(), split_rules=split_rules, receipt_image_url=url
+    )

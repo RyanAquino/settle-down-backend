@@ -189,8 +189,10 @@ Extract receipt items from an uploaded image using OCR via AI.
 
 | Field | Type | Description |
 | --- | --- | --- |
-| `receipt_items` | `list[ReceiptItemData]` | List of receipt items (each with `english_name: str`, `japanese_name: str`, `item_order: int`, `cost: float`, `quantity: int`, `discount: int`) |
-| `receipt_adjustments` | `list[ReceiptAdjustment]` | Basket discounts and redeemed points. Each entry has a `kind` (`discount` or `points_redemption`), a positive monetary `amount`, and eligible `item_orders` (empty means all items). Line prices already include item discounts and exclude these deductions. |
+| `receipt_items` | `list[ReceiptItemData]` | List of receipt items (each with `english_name: str`, `japanese_name: str`, `item_order: int`, `cost: float`, `quantity: int`, `discount: float`, the item-specific savings already included in `cost`) |
+| `receipt_discount` | `float` | Total value of checkout coupons. Excludes item discounts already subtracted from line prices. |
+| `points_redeemed` | `float` | Monetary value of loyalty points spent after any added tax. |
+| `split_rules` | `ReceiptSplitRules` | Optional allocation detail. For each of `discounts` and `points`, an empty list spreads the corresponding receipt total across the basket. A nonempty list breaks that total into deductions in printed order, each with an `amount` and eligible `item_orders`. An empty `item_orders` covers all items. |
 | `en_shop_name` | `str` | Shop name in English |
 | `jp_shop_name` | `str` | Shop name in Japanese |
 | `tax_percentage` | `float` | Tax percentage |
@@ -213,7 +215,7 @@ curl -X POST "http://localhost:8000/api/v1/receipts/receipt-items/" \
       "english_name": "Onigiri",
       "japanese_name": "おにぎり",
       "item_order": 1,
-      "cost": 150.0,
+      "cost": 300.0,
       "quantity": 2,
       "discount": 0
     }
@@ -221,7 +223,9 @@ curl -X POST "http://localhost:8000/api/v1/receipts/receipt-items/" \
   "en_shop_name": "Sample Mart",
   "jp_shop_name": "サンプルマート",
   "tax_percentage": 10.0,
-  "receipt_adjustments": [],
+  "receipt_discount": 0,
+  "points_redeemed": 0,
+  "split_rules": { "discounts": [], "points": [] },
   "total_amount": 330.0,
   "receipt_date": "2026-05-30T12:34:56",
   "receipt_image_url": "https://res.cloudinary.com/example/image/upload/receipt.jpg"

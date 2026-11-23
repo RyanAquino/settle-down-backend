@@ -1,5 +1,4 @@
 from datetime import datetime
-from typing import Literal
 
 from django.utils import timezone
 from pydantic import BaseModel, Field, FiniteFloat
@@ -18,7 +17,7 @@ class ReceiptItemData(BaseModel):
     )
     item_order: int = Field(description="The order of the items in the receipt")
     cost: FiniteFloat = Field(
-        description="Line total for the quantity shown, after item-specific discounts and before receipt adjustments"
+        description="Line total for the quantity shown, after item-specific discounts and before basket coupons and points"
     )
     quantity: int = Field(description="The quantity of the purchased item")
     discount: float = Field(
@@ -27,36 +26,9 @@ class ReceiptItemData(BaseModel):
     )
 
 
-class ReceiptAdjustment(BaseModel):
-    kind: Literal["discount", "points_redemption"]
-    amount: FiniteFloat = Field(
-        gt=0, description="Positive monetary value deducted once across the receipt"
-    )
-    item_orders: list[int] = Field(
-        default_factory=list,
-        description="Eligible item_order values when identifiable; empty for the whole basket",
-    )
-
-
-class ScannedReceiptAdjustment(ReceiptAdjustment):
-    printed_label: str = Field(
-        default="",
-        description="Copy the original printed label of this basket discount or points redemption",
-    )
-    eligible_subtotal: FiniteFloat | None = Field(
-        default=None,
-        gt=0,
-        description="Printed amount eligible for this offer (e.g. 全品割引対象金額), before the deduction. Null if absent.",
-    )
-
-
-class ReceiptData(BaseModel):
-    receipt_adjustments: list[ScannedReceiptAdjustment] = Field(
-        default_factory=list,
-        description="Only purchase-wide coupons and redeemed points. Exclude every 1品割引 or item-specific saving.",
-    )
+class ReceiptFields(BaseModel):
     receipt_items: list[ReceiptItemData] = Field(
-        default_factory=list, description="The list of items in the receipt"
+        description="The list of purchased items in the receipt"
     )
     en_shop_name: str = Field(
         ..., description="The name of the shop in the receipt in english"
@@ -75,3 +47,33 @@ class ReceiptData(BaseModel):
     receipt_date: datetime = Field(
         default_factory=timezone.now, description="The date of the receipt"
     )
+
+
+class ReceiptData(ReceiptFields):
+    receipt_discount: FiniteFloat = Field(
+        default=0,
+        ge=0,
+        description="Combined value of checkout coupons, excluding savings already in item costs",
+    )
+    points_redeemed: FiniteFloat = Field(
+        default=0,
+        ge=0,
+        description="Monetary value of loyalty points spent on this receipt",
+    )
+
+
+class SplitDeduction(BaseModel):
+    amount: FiniteFloat = Field(
+        gt=0, description="Positive monetary value deducted once across the receipt"
+    )
+    item_orders: list[int] = Field(
+        default_factory=list,
+        description="Eligible item_order values when identifiable; empty for the whole basket",
+    )
+
+
+class ReceiptSplitRules(BaseModel):
+    """Optional detail for allocating each receipt total in printed order."""
+
+    discounts: list[SplitDeduction] = Field(default_factory=list)
+    points: list[SplitDeduction] = Field(default_factory=list)

@@ -1,14 +1,9 @@
-from pathlib import Path
-
 import pytest
 from pydantic import ValidationError
 from pydantic_ai import ModelRetry
 
-from backend_api.dto.receipt_item import (
-    ReceiptData,
-    ReceiptItemData,
-    ScannedReceiptAdjustment,
-)
+from backend_api.dto.receipt_item import ReceiptItemData
+from backend_api.dto.scanned_receipt import ScannedReceipt, ScannedReceiptAdjustment
 from backend_api.ocr import validate_receipt_data
 
 
@@ -23,7 +18,7 @@ def _item(cost, english_name="Coffee"):
 
 
 def _receipt(total_amount, items):
-    return ReceiptData(
+    return ScannedReceipt(
         en_shop_name="Cafe",
         jp_shop_name="カフェ",
         tax_percentage=10,
@@ -77,7 +72,7 @@ def test_deductions_must_be_positive_finite_currency_amounts(amount):
 
 
 def test_item_coupon_misread_as_a_basket_deduction_retries_instead_of_charging_the_wrong_shopper():
-    data = _receipt(5809, [_item(987), _item(2310)])
+    data = _receipt(5809, [_item(987)])
     data.receipt_adjustments = [
         ScannedReceiptAdjustment(
             kind="discount", amount=347, item_orders=[1], printed_label="１ 品割引"
@@ -87,43 +82,9 @@ def test_item_coupon_misread_as_a_basket_deduction_retries_instead_of_charging_t
         validate_receipt_data(data)
 
 
-def test_printed_coupon_base_recovers_only_the_four_eligible_sugi_lines():
-    fixture = Path(__file__).parent / "fixtures" / "sugi-receipt.json"
-    data = ReceiptData.model_validate_json(fixture.read_bytes())
-    coupon = data.receipt_adjustments[0]
-    coupon.item_orders = []
-    coupon.eligible_subtotal = 2909
-    assert validate_receipt_data(data).receipt_adjustments[0].item_orders == [
-        1,
-        2,
-        5,
-        6,
-    ]
-
-
-@pytest.mark.parametrize(
-    ("prices", "target", "marked", "expected"),
-    [
-        ([0, 200, 5.05, 2.95], 8, [2], [3, 4]),
-        ([10, 10], 10, [], []),
-        ([10, 10], 10, [2], [2]),
-        ([3, 4], 8, [], []),
-        ([2**i for i in range(15)], 50_000, [], []),
-    ],
-)
-def test_coupon_base_preserves_explicit_marks_and_leaves_ambiguous_scopes_open(
-    prices, target, marked, expected
-):
-    items = [_item(price) for price in prices]
-    for i, item in enumerate(items, 1):
-        item.item_order = i
-    data = _receipt(1, items)
-    data.receipt_adjustments = [
-        ScannedReceiptAdjustment(
-            kind="discount", amount=1, item_orders=marked, eligible_subtotal=target
-        )
-    ]
-    assert validate_receipt_data(data).receipt_adjustments[0].item_orders == expected
+def test_purchased_lines_need_distinct_order_numbers():
+    with pytest.raises(ModelRetry, match="distinct item_order"):
+        validate_receipt_data(_receipt(200, [_item(100), _item(100)]))
 
 
 class TestDecimalCurrencies:
