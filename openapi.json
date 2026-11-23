@@ -242,7 +242,7 @@
                 "$ref": "#/components/schemas/ReceiptSplitRules"
               }
             ],
-            "description": "Allocation detail when a deduction is scoped or several deductions share one total. Empty lists allocate the corresponding total across the basket."
+            "description": "One rule per printed deduction, in receipt order within each stage. Confirm needs_review rules before splitting."
           },
           "receipt_image_url": {
             "description": "The url of the uploaded receipt image",
@@ -290,6 +290,7 @@
           "discount": {
             "default": 0,
             "description": "The discount amount applied to this line, in the receipt's currency (0 if none). Already subtracted from cost",
+            "minimum": 0,
             "title": "Discount",
             "type": "number"
           }
@@ -305,7 +306,7 @@
         "type": "object"
       },
       "ReceiptSplitRules": {
-        "description": "Optional detail for allocating each receipt total in printed order.",
+        "description": "Deductions for allocating each receipt total in printed order.",
         "properties": {
           "discounts": {
             "items": {
@@ -334,16 +335,46 @@
             "type": "number"
           },
           "item_orders": {
-            "description": "Eligible item_order values when identifiable; empty for the whole basket",
+            "description": "Purchased line references explicitly identified by the receipt",
             "items": {
               "type": "integer"
             },
             "title": "Item Orders",
             "type": "array"
+          },
+          "printed_label": {
+            "default": "",
+            "description": "Original printed deduction label",
+            "title": "Printed Label",
+            "type": "string"
+          },
+          "eligible_subtotal": {
+            "anyOf": [
+              {
+                "exclusiveMinimum": 0,
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Printed subtotal eligible for this offer, before the deduction",
+            "title": "Eligible Subtotal"
+          },
+          "scope": {
+            "description": "Apply across the basket, to the referenced lines, or ask the shopper to confirm eligibility",
+            "enum": [
+              "basket",
+              "items",
+              "needs_review"
+            ],
+            "title": "Scope",
+            "type": "string"
           }
         },
         "required": [
-          "amount"
+          "amount",
+          "scope"
         ],
         "title": "SplitDeduction",
         "type": "object"

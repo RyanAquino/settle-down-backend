@@ -192,7 +192,7 @@ Extract receipt items from an uploaded image using OCR via AI.
 | `receipt_items` | `list[ReceiptItemData]` | List of receipt items (each with `english_name: str`, `japanese_name: str`, `item_order: int`, `cost: float`, `quantity: int`, `discount: float`, the item-specific savings already included in `cost`) |
 | `receipt_discount` | `float` | Total value of checkout coupons. Excludes item discounts already subtracted from line prices. |
 | `points_redeemed` | `float` | Monetary value of loyalty points spent after any added tax. |
-| `split_rules` | `ReceiptSplitRules` | Optional allocation detail. For each of `discounts` and `points`, an empty list spreads the corresponding receipt total across the basket. A nonempty list breaks that total into deductions in printed order, each with an `amount` and eligible `item_orders`. An empty `item_orders` covers all items. |
+| `split_rules` | `ReceiptSplitRules` | Ordered `discounts` and `points` entries preserve the printed label, deduction amount and eligible subtotal when printed. A `scope` of `basket` covers every purchase, `items` applies only to the listed `item_orders`, and `needs_review` requires the shopper to select eligible items before splitting. |
 | `en_shop_name` | `str` | Shop name in English |
 | `jp_shop_name` | `str` | Shop name in Japanese |
 | `tax_percentage` | `float` | Tax percentage |

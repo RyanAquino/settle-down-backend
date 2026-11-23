@@ -102,3 +102,10 @@ class TestDecimalCurrencies:
         )
 
         assert item.discount == 7.25
+
+
+def test_item_coupon_can_cover_a_whole_purchase():
+    item = _item(0)
+    item.discount = 500
+    receipt = _receipt(0, [item])
+    assert validate_receipt_data(receipt) is receipt

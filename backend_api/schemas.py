@@ -43,7 +43,7 @@ class TransactionPostIn(Schema):
 class OCRReceiptPostOut(ReceiptData):
     split_rules: ReceiptSplitRules = Field(
         default_factory=ReceiptSplitRules,
-        description="Allocation detail when a deduction is scoped or several deductions share one total. Empty lists allocate the corresponding total across the basket.",
+        description="One rule per printed deduction, in receipt order within each stage. Confirm needs_review rules before splitting.",
     )
     receipt_image_url: str = Field(
         ..., description="The url of the uploaded receipt image"

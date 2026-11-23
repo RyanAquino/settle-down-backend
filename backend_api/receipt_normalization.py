@@ -3,6 +3,7 @@
 from decimal import Decimal
 
 from backend_api.dto.receipt_item import (
+    DeductionScope,
     ReceiptData,
     ReceiptItemData,
     ReceiptSplitRules,
@@ -47,17 +48,20 @@ def _split_deduction(
         )
         if base != Decimal(str(adjustment.eligible_subtotal)):
             orders = _unique_eligible_items(items, adjustment.eligible_subtotal)
-    return SplitDeduction(amount=adjustment.amount, item_orders=orders)
-
-
-def _total_and_rules(
-    deductions: list[SplitDeduction],
-) -> tuple[float, list[SplitDeduction]]:
-    total = sum(Decimal(str(entry.amount)) for entry in deductions)
-    # One basket-wide deduction is fully described by its receipt total.
-    if len(deductions) == 1 and not deductions[0].item_orders:
-        return float(total), []
-    return float(total), deductions
+    scope: DeductionScope
+    if orders:
+        scope = "items"
+    elif adjustment.eligible_subtotal is None and adjustment.whole_basket:
+        scope = "basket"
+    else:
+        scope = "needs_review"
+    return SplitDeduction(
+        amount=adjustment.amount,
+        printed_label=adjustment.printed_label,
+        eligible_subtotal=adjustment.eligible_subtotal,
+        item_orders=orders,
+        scope=scope,
+    )
 
 
 def normalize_receipt(scan: ScannedReceipt) -> tuple[ReceiptData, ReceiptSplitRules]:
@@ -67,11 +71,9 @@ def normalize_receipt(scan: ScannedReceipt) -> tuple[ReceiptData, ReceiptSplitRu
     for adjustment in scan.receipt_adjustments:
         rules = discounts if adjustment.kind == "discount" else points
         rules.append(_split_deduction(adjustment, scan.receipt_items))
-    receipt_discount, discount_rules = _total_and_rules(discounts)
-    points_redeemed, point_rules = _total_and_rules(points)
     receipt = ReceiptData(
         **scan.model_dump(exclude={"receipt_adjustments"}),
-        receipt_discount=receipt_discount,
-        points_redeemed=points_redeemed,
+        receipt_discount=float(sum(Decimal(str(rule.amount)) for rule in discounts)),
+        points_redeemed=float(sum(Decimal(str(rule.amount)) for rule in points)),
     )
-    return receipt, ReceiptSplitRules(discounts=discount_rules, points=point_rules)
+    return receipt, ReceiptSplitRules(discounts=discounts, points=points)

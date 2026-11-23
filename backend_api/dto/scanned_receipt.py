@@ -2,21 +2,16 @@
 
 from typing import Literal
 
-from pydantic import Field, FiniteFloat
+from pydantic import Field
 
-from backend_api.dto.receipt_item import ReceiptFields, SplitDeduction
+from backend_api.dto.receipt_item import DeductionEvidence, ReceiptFields
 
 
-class ScannedReceiptAdjustment(SplitDeduction):
+class ScannedReceiptAdjustment(DeductionEvidence):
     kind: Literal["discount", "points_redemption"]
-    printed_label: str = Field(
-        default="",
-        description="Copy the original printed label of this basket discount or points redemption",
-    )
-    eligible_subtotal: FiniteFloat | None = Field(
-        default=None,
-        gt=0,
-        description="Printed amount eligible for this offer (e.g. 全品割引対象金額), before the deduction. Null if absent.",
+    whole_basket: bool = Field(
+        default=False,
+        description="True when this deduction clearly covers the entire basket, including unrestricted points spent at checkout. False if restricted or unclear.",
     )
 
 

@@ -33,10 +33,10 @@ You receive a receipt as an image. Extract the fields defined by the output sche
 
 - Languages: the receipt may be Japanese, English, or both. For every name (each item and the shop), provide BOTH the original Japanese text and an English translation. Never discard or overwrite the original Japanese.
 - Amounts: report every amount in the receipt's own currency — do not convert. Strip currency marks (¥, 円, $, NT$, HK$, US$, €) and comma grouping (e.g. "1,200" -> 1200); digits may be full-width (１２３). Zero-decimal currencies (JPY, KRW, TWD) are whole integers — never invent a fractional part; currencies that carry cents (USD, EUR, HKD) keep the decimals as printed.
-- Items: list each purchased line item. `cost` is the final price for that line AFTER item-specific discounts and BEFORE receipt-wide discounts or points, for the quantity shown (it is a line total, not a per-unit price). If a line has no price or 0, omit it.
+- Items: list each purchased line item. `cost` is the final price for that line AFTER item-specific discounts and BEFORE receipt-wide discounts or points, for the quantity shown (it is a line total, not a per-unit price). Keep a purchased line reduced to zero by a coupon; omit unpriced labels.
 - Discounts: when a discount line applies to the item directly above it, subtract it from that item's `cost`; record the savings in that item's `discount` field. A 1品割引 / １品割引 / 単品割引 is always an individual item coupon. For example, a 200 item followed by 1品割引 -30 is one item with cost 170 and discount 30. Never list those coupons in receipt_adjustments.
 - Receipt adjustments: list each printed basket coupon or order discount (e.g. 全品割引) as kind `discount`, and the currency value of points actually spent (e.g. ポイント値引金額 or 利用ポイント) as `points_redemption`. Use positive deduction amounts. Keep these out of item costs. Exclude summaries of savings already counted on items, points earned/balances, eligibility subtotals (対象金額), tax breakdowns and payment-method lines. Never invent a deduction to close a gap.
-- Eligibility: copy the eligible subtotal (対象金額) into eligible_subtotal when printed, independently of the discount amount. Give item_order references when the receipt identifies the eligible lines. Otherwise return an empty list. Never use the eligible subtotal as a price or deduction.
+- Eligibility: copy the eligible subtotal (対象金額) into eligible_subtotal when printed, independently of the discount amount. Give item_order references when the receipt identifies the eligible lines. Only use references for explicit printed marks; never guess a subset. Otherwise return an empty list. Set whole_basket only for an explicitly unrestricted deduction or generally applicable points redemption. A printed restricted base takes precedence. Never use the eligible subtotal as a price or deduction.
 - Tax: set `tax_percentage` to the rate printed on the receipt (use 0 if none or multiple rates are shown).
 - Total: copy the final printed amount payable after discounts and points (支払合計). Prefer it over an intermediate shopping total (お買物合計). Ignore cash tendered, change, tax bases and repeated payment confirmations. Preserve tax-inclusive prices. Never alter a line to make it balance.
 - Date: report `receipt_date` in Japan Standard Time (JST). If the receipt shows no date, leave it unset.
@@ -50,7 +50,9 @@ def validate_receipt_data(data: ScannedReceipt) -> ScannedReceipt:
     resolved from the accepted evidence during receipt normalization.
     """
     if data.total_amount < 0 or (
-        data.total_amount == 0 and not data.receipt_adjustments
+        data.total_amount == 0
+        and not data.receipt_adjustments
+        and not any(item.discount for item in data.receipt_items)
     ):
         raise ModelRetry(
             "total_amount must be the positive printed grand total unless fully discounted."

@@ -63,6 +63,7 @@
     {
       "kind": "points_redemption",
       "amount": 494,
+      "whole_basket": true,
       "printed_label": "スギポイント値引金額",
       "item_orders": []
     }

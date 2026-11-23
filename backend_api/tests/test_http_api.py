@@ -253,8 +253,24 @@ class TestReceiptEndpoint:
         assert data["receipt_discount"] == 233
         assert data["points_redeemed"] == 494
         assert data["split_rules"] == {
-            "discounts": [{"amount": 233, "item_orders": [1, 2, 5, 6]}],
-            "points": [],
+            "discounts": [
+                {
+                    "amount": 233,
+                    "item_orders": [1, 2, 5, 6],
+                    "scope": "items",
+                    "eligible_subtotal": 2909,
+                    "printed_label": "全品割引",
+                }
+            ],
+            "points": [
+                {
+                    "amount": 494,
+                    "item_orders": [],
+                    "scope": "basket",
+                    "eligible_subtotal": None,
+                    "printed_label": "スギポイント値引金額",
+                }
+            ],
         }
         assert (
             sum(i["cost"] for i in data["receipt_items"])

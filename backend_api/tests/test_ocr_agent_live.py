@@ -125,6 +125,9 @@ def test_sugi_photo_extracts_the_printed_payment_and_coupon_scope(client):
     assert data["receipt_discount"] == 233
     assert data["points_redeemed"] == 494
     [coupon] = data["split_rules"]["discounts"]
+    assert coupon["scope"] == "items"
+    assert coupon["eligible_subtotal"] == 2909
+    assert data["split_rules"]["points"][0]["scope"] == "basket"
     assert coupon["amount"] == 233
     assert set(coupon["item_orders"]) == {lines[i]["item_order"] for i in (0, 1, 4, 5)}
     assert (

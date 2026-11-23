@@ -24,8 +24,24 @@ def test_printed_subtotal_identifies_four_eligible_lines_without_changing_the_sc
     assert receipt.points_redeemed == 494
     assert receipt.total_amount == 5809
     assert rules.model_dump() == {
-        "discounts": [{"amount": 233, "item_orders": [1, 2, 5, 6]}],
-        "points": [],
+        "discounts": [
+            {
+                "amount": 233,
+                "item_orders": [1, 2, 5, 6],
+                "scope": "items",
+                "eligible_subtotal": 2909,
+                "printed_label": "全品割引",
+            }
+        ],
+        "points": [
+            {
+                "amount": 494,
+                "item_orders": [],
+                "scope": "basket",
+                "eligible_subtotal": None,
+                "printed_label": "スギポイント値引金額",
+            }
+        ],
     }
 
 
@@ -53,9 +69,10 @@ def test_printed_base_preserves_marks_and_only_infers_a_unique_scope(
     ]
     receipt, rules = normalize_receipt(scan)
     assert receipt.receipt_discount == 1
-    assert [rule.item_orders for rule in rules.discounts] == (
-        [expected] if expected else []
-    )
+    [rule] = rules.discounts
+    assert rule.item_orders == expected
+    assert rule.scope == ("items" if expected else "needs_review")
+    assert rule.eligible_subtotal == target
 
 
 def test_multiple_coupons_and_redemptions_keep_printed_order_and_decimal_totals(scan):
@@ -68,13 +85,23 @@ def test_multiple_coupons_and_redemptions_keep_printed_order_and_decimal_totals(
     receipt, rules = normalize_receipt(scan)
     assert receipt.receipt_discount == 0.3
     assert receipt.points_redeemed == 0.45
-    assert rules.model_dump() == {
-        "discounts": [
-            {"amount": 0.1, "item_orders": []},
-            {"amount": 0.2, "item_orders": [2, 3]},
-        ],
-        "points": [
-            {"amount": 0.4, "item_orders": [2]},
-            {"amount": 0.05, "item_orders": []},
-        ],
-    }
+    assert [(r.amount, r.scope, r.item_orders) for r in rules.discounts] == [
+        (0.1, "needs_review", []),
+        (0.2, "items", [2, 3]),
+    ]
+    assert [(r.amount, r.scope) for r in rules.points] == [
+        (0.4, "items"),
+        (0.05, "needs_review"),
+    ]
+
+
+def test_an_unrestricted_coupon_retains_its_label_and_amount(scan):
+    scan.receipt_adjustments = [
+        ScannedReceiptAdjustment(
+            kind="discount", amount=250, whole_basket=True, printed_label="Store coupon"
+        )
+    ]
+    receipt, rules = normalize_receipt(scan)
+    assert receipt.receipt_discount == 250
+    assert rules.discounts[0].scope == "basket"
+    assert rules.discounts[0].printed_label == "Store coupon"
