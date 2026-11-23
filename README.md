@@ -355,7 +355,7 @@ The suite is strict on purpose:
 
 - **Warnings are errors** (`filterwarnings = ["error"]`), so a deprecation fails the PR that introduces it instead of the upgrade that removes the API.
 - **HTTP tests go through the real stack**: `test_http_api.py` uses Django's test `Client`, so requests traverse the URL conf, middleware and bearer auth.
-- **Live tests are opt-in.** Tests marked `live` call paid APIs and are deselected by default; run them with `uv run pytest -m live` (see `test_ocr_agent_live.py` for the keys and receipt image they need).
+- **Live tests are opt-in.** Tests marked `live` call paid APIs and are deselected by default; run them with `uv run pytest -m live` (see `test_ocr_agent_live.py` for the keys and receipt image they need). Set `LIVE_SUGI_RECEIPT_IMAGE` to a private local copy of the six-item Sugi receipt to check both deductions and the ¥5,809 payment through the upload endpoint.
 
 ### API contract snapshot
 

@@ -192,12 +192,15 @@ def ocr_agent():
         yield agent
 
 
-def _upload():
-    return SimpleUploadedFile("receipt.jpg", b"jpeg-bytes", content_type="image/jpeg")
+def _upload(content_type="image/jpeg"):
+    return SimpleUploadedFile("receipt.jpg", b"image-bytes", content_type=content_type)
 
 
 class TestReceiptEndpoint:
-    def test_extracts_receipt_and_hosts_image_on_cloudinary(self, client, ocr_agent):
+    @pytest.mark.parametrize("media_type", ["image/jpeg", "image/png"])
+    def test_extracts_receipt_and_hosts_image_on_cloudinary(
+        self, client, ocr_agent, media_type
+    ):
         with (
             patch(
                 "backend_api.api.cloudinary_upload_file",
@@ -205,7 +208,7 @@ class TestReceiptEndpoint:
             ),
             patch("backend_api.api.catbox_upload_file") as catbox,
         ):
-            response = client.post(RECEIPT_URL, {"file": _upload()}, **AUTH)
+            response = client.post(RECEIPT_URL, {"file": _upload(media_type)}, **AUTH)
 
         assert response.status_code == 200
         data = response.json()
@@ -219,7 +222,8 @@ class TestReceiptEndpoint:
         # The image bytes reach the model as binary content.
         prompt = ocr_agent.run.await_args.args[0]
         images = [part for part in prompt if isinstance(part, BinaryContent)]
-        assert [image.data for image in images] == [b"jpeg-bytes"]
+        assert [image.data for image in images] == [b"image-bytes"]
+        assert [image.media_type for image in images] == [media_type]
 
     def test_sugi_receipt_keeps_both_deductions_separate_from_line_prices(
         self, client, ocr_agent
