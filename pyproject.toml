@@ -32,6 +32,7 @@ dev = [
     "debugpy>=1.8.21",
     "deptry>=0.25.1",
     "django-stubs>=5.2.9,<6",
+    "httpx>=0.28.1",
     "import-linter>=2.16",
     "mypy>=2.4.1",
     "pre-commit>=4.6.0",

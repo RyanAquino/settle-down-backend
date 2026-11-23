@@ -11,7 +11,7 @@ This project does not currently include a LICENSE file. As such, it is **UNLICEN
 ## Features
 
 - OCR receipt image processing with bilingual (Japanese/English) text extraction
-- AI-powered line-item parsing with quantity and discount handling
+- AI-powered line-item transcription; per-item, subset, coupon and points discounts are allocated to items in pure code and reconciled against the printed totals
 - Two-tier expense allocation: per-member itemization plus shared item splitting
 - Tax computation with floating-point equality verification against the declared total
 - Receipt image hosting via Cloudinary with a catbox.moe fallback
@@ -54,11 +54,15 @@ settledown exposes a [Django Ninja](https://django-ninja.dev/) API under the `/a
 
 1. The client uploads a receipt image to `POST /api/v1/receipts/receipt-items/`.
 2. The endpoint initializes a Pydantic AI agent backed by the OpenRouter provider (default `google/gemini-3-flash-preview`, via `get_openrouter_receipt_agent`). An alternate OpenAI/LLM7 factory (`get_receipt_agent`) remains available.
-3. The agent receives a system prompt (extract items, bilingual shop names, tax %, total) plus the image.
-4. The agent calls a `translate_jp_to_en_text` tool as needed (the system prompt instructs it to always translate the text to English before processing, so the tool may be invoked unconditionally).
-5. An output validator rejects grossly broken extractions (a non-positive total, no line items, a negative cost) and asks the model to retry. Items are deliberately not required to sum to the printed total, because mixed tax rates would make valid receipts fail.
-6. The receipt image is uploaded to Cloudinary; on failure, it is uploaded to catbox.moe.
-7. The API returns the receipt data: items list, shop names, tax %, total, date, and image URL.
+3. The agent receives a system prompt plus the image, and **transcribes** the receipt: printed item prices, every printed line that changes the amount to pay (discounts, coupons, points, surcharges, each with its printed amount, percent, base amount and the items it names), the tax lines and the amount due.
+   It never subtracts a discount or computes a total.
+4. The agent calls a `translate_jp_to_en_text` tool as needed for English names.
+5. `backend_api/receipt_allocation.py` does the money math in integer minor units.
+   It resolves which items each line applies to from the printed numbers (a printed base amount or percentage), applies the lines in printed order by largest remainder, and reconciles the result against the printed amount due and tax lines.
+6. The output validator asks the model to read again only when a transcription cannot be read as money, and at most once more when it does not add up; the run returns the best attempt, not the last.
+7. The receipt image is uploaded to Cloudinary; on failure, it is uploaded to catbox.moe.
+8. The API returns the items with `cost` set to what each line cost after every discount, plus shop names, tax %, the total paid, date, and image URL.
+   A scan that does not reconcile keeps its printed prices instead, so the app asks for another photo rather than filing a guessed split.
 
 ### Flow 2 — Transaction Creation
 
@@ -189,13 +193,19 @@ Extract receipt items from an uploaded image using OCR via AI.
 
 | Field | Type | Description |
 | --- | --- | --- |
-| `receipt_items` | `list[ReceiptItemData]` | List of receipt items (each with `english_name: str`, `japanese_name: str`, `item_order: int`, `cost: float`, `quantity: int`, `discount: int`) |
+| `receipt_items` | `list[OCRReceiptItemOut]` | Items in printed order, each with `english_name: str`, `japanese_name: str`, `item_order: int` (from 1), `cost: float`, `quantity: int` and `discount: float` |
 | `en_shop_name` | `str` | Shop name in English |
-| `jp_shop_name` | `str` | Shop name in Japanese |
-| `tax_percentage` | `float` | Tax percentage |
-| `total_amount` | `float` | Total receipt amount |
+| `jp_shop_name` | `str` | Shop name as printed |
+| `tax_percentage` | `float` | The printed tax rate (the one with the largest taxable base when several are printed), or 0 |
+| `total_amount` | `float` | What the group splits: the amount paid after every discount, coupon and points |
 | `receipt_date` | `datetime` | Receipt date |
 | `receipt_image_url` | `str` | URL of the uploaded receipt image |
+
+`cost` is what each line cost after its share of every discount, coupon, points and surcharge, so the items add up to `total_amount`.
+In the example below, a 15% discount takes 300 off the 2,000 lotion, then 270 of redeemed points come off both lines in proportion (100 and 170).
+When tax is added on top at one printed rate, `cost` stays before tax and the items plus `tax_percentage` add up to `total_amount`, as before.
+`discount` is everything taken off the printed price, already subtracted from `cost`.
+When a scan cannot be reconciled with the printed totals, or a discount's items cannot be settled from the printed numbers, `cost` is the printed price and `discount` is 0, so the items do not add up and the app asks for another photo.
 
 **Example:**
 
@@ -209,19 +219,27 @@ curl -X POST "http://localhost:8000/api/v1/receipts/receipt-items/" \
 {
   "receipt_items": [
     {
-      "english_name": "Onigiri",
-      "japanese_name": "おにぎり",
+      "english_name": "Dry shampoo",
+      "japanese_name": "ドライシャンプー",
       "item_order": 1,
-      "cost": 150.0,
-      "quantity": 2,
-      "discount": 0
+      "cost": 900.0,
+      "quantity": 1,
+      "discount": 100.0
+    },
+    {
+      "english_name": "Moisturizing lotion",
+      "japanese_name": "保湿ローション",
+      "item_order": 2,
+      "cost": 1530.0,
+      "quantity": 1,
+      "discount": 470.0
     }
   ],
-  "en_shop_name": "Sample Mart",
-  "jp_shop_name": "サンプルマート",
+  "en_shop_name": "Sample Pharmacy",
+  "jp_shop_name": "サンプル薬局",
   "tax_percentage": 10.0,
-  "total_amount": 330.0,
-  "receipt_date": "2026-05-30T12:34:56",
+  "total_amount": 2430.0,
+  "receipt_date": "2026-11-23T15:16:00",
   "receipt_image_url": "https://res.cloudinary.com/example/image/upload/receipt.jpg"
 }
 ```
@@ -430,10 +448,11 @@ settledown/
     ├── firebase_auth.py        # Firebase Auth REST sign-in
     ├── utils.py                # Pure receipt-splitting math (tax inference, weights)
     ├── ocr.py                  # Pydantic AI receipt agents (OpenRouter, OpenAI/LLM7)
+    ├── receipt_allocation.py   # Pure receipt money math: discount scope, allocation, reconciliation
     ├── schemas.py              # Request/response schemas
     ├── services.py             # Cloudinary + catbox.moe image upload
     ├── dto/                    # Data structures
-    │   ├── receipt_item.py     # ReceiptData and related OCR structures
+    │   ├── receipt_scan.py     # ReceiptScan: what the OCR model transcribes
     │   ├── settleup.py         # Settle Up data structures
     │   └── llm7_override.py    # LLM7ChatModel - LLM response parsing workaround
     ├── models.py               # Empty - no application ORM models
@@ -447,9 +466,10 @@ settledown/
 - **No application database:** `models.py` is empty; all state is external (Firebase, Redis, client).
 - **No Django ORM models:** transactions are created only via the Firebase REST API.
 - **No models are registered with the Django admin** (the app has no models).
-- **Tax is all-or-nothing:** it is computed only if `member_taxes + member_items + shared_tax == total_amount` (float equality).
+- **Tax is all-or-nothing on transactions:** it is computed only if `member_taxes + member_items + shared_tax == total_amount` (float equality).
+- **Scans with tax added on top at several rates, or with a deduction after tax, do not reconcile** and keep their printed prices, so the app asks for review.
 - **No FX conversion:** transactions are filed in the group's currency and receipt amounts are assumed to match it; a receipt in a different currency than its group is recorded unconverted.
-- **`total_amount` is trusted input:** there is no reconciliation if extracted items differ from the declared total.
+- **The transaction endpoint trusts `total_amount`:** the scan endpoint reconciles every scan against the printed totals, but a transaction posted directly is not checked.
 - **Settle Up metadata is cached ~24h** (~86,500s): group/member info may be stale until the cache expires.
 - **Shared items are split evenly** across all members; there are no per-member overrides.
 - **A receipt image is required for a transaction** (the URL field is optional, but the OCR flow always provides it).

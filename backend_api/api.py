@@ -1,11 +1,13 @@
 import logging
 
 from django.http import HttpRequest
+from django.utils import timezone
 from ninja import File, Router, UploadedFile
 from pydantic_ai import BinaryContent
 
-from backend_api.dto.receipt_item import ReceiptData
-from backend_api.ocr import get_openrouter_receipt_agent
+from backend_api.dto.receipt_scan import ReceiptScan
+from backend_api.ocr import ScanAttempts, get_openrouter_receipt_agent
+from backend_api.receipt_allocation import allocate_scan, from_minor_units
 from backend_api.schemas import OCRReceiptItemOut, OCRReceiptPostOut
 from backend_api.services import catbox_upload_file, cloudinary_upload_file
 
@@ -49,17 +51,31 @@ async def post_ocr_receipt(
     agent = get_openrouter_receipt_agent()
 
     data = file.read()
-    result = await agent.run(
-        [
-            """
-            here is the image receipt:
-            """,
-            BinaryContent(
-                data=data, media_type=image_media_type(data, file.content_type)
-            ),
-        ]
-    )
-    results = result.output
+    attempts = ScanAttempts()
+    try:
+        result = await agent.run(
+            [
+                """
+                here is the image receipt:
+                """,
+                BinaryContent(
+                    data=data, media_type=image_media_type(data, file.content_type)
+                ),
+            ],
+            deps=attempts,
+        )
+        scan = result.output
+    except Exception:
+        # A later read (or the model call itself) failed after an earlier read
+        # was already usable as money: answer with that rather than an error.
+        best = attempts.best()
+        if best is None:
+            raise
+        logger.warning(
+            "Receipt read failed after a usable attempt; using the best attempt",
+            exc_info=True,
+        )
+        scan = best
 
     try:
         url = cloudinary_upload_file(file)
@@ -71,27 +87,39 @@ async def post_ocr_receipt(
         )
         url = catbox_upload_file(file)
 
-    return _receipt_response(results, url)
+    return _receipt_response(scan, url)
 
 
-def _receipt_response(receipt: ReceiptData, image_url: str) -> OCRReceiptPostOut:
-    """Map what the OCR model read onto the public scan response."""
-    return OCRReceiptPostOut(
-        receipt_items=[
+def _receipt_response(scan: ReceiptScan, image_url: str) -> OCRReceiptPostOut:
+    """Map a transcription and its allocation onto the public scan response.
+
+    ``cost`` is what each line cost after every adjustment, so the items add
+    up to ``total_amount`` (or do with ``tax_percentage`` added on top). A scan
+    that does not reconcile keeps its printed prices instead.
+    """
+    receipt, allocation = allocate_scan(scan)
+    places = receipt.decimal_places
+    reconciled = allocation.status == "reconciled"
+    items = []
+    for item, printed in zip(receipt.items, scan.items, strict=True):
+        cost = allocation.costs[item.item_order]
+        saved = item.price - cost if reconciled else 0
+        items.append(
             OCRReceiptItemOut(
-                english_name=item.english_name,
-                japanese_name=item.japanese_name,
+                english_name=printed.english_name,
+                japanese_name=printed.japanese_name,
                 item_order=item.item_order,
-                cost=item.cost,
-                quantity=item.quantity,
-                discount=item.discount,
+                cost=from_minor_units(cost, places),
+                quantity=printed.quantity,
+                discount=from_minor_units(max(saved, 0), places),
             )
-            for item in receipt.receipt_items
-        ],
-        en_shop_name=receipt.en_shop_name,
-        jp_shop_name=receipt.jp_shop_name,
-        tax_percentage=receipt.tax_percentage,
-        total_amount=receipt.total_amount,
-        receipt_date=receipt.receipt_date,
+        )
+    return OCRReceiptPostOut(
+        receipt_items=items,
+        en_shop_name=scan.en_shop_name,
+        jp_shop_name=scan.jp_shop_name,
+        tax_percentage=float(allocation.tax_rate or 0),
+        total_amount=from_minor_units(allocation.total, places),
+        receipt_date=scan.receipt_date or timezone.now(),
         receipt_image_url=image_url,
     )

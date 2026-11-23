@@ -2,14 +2,14 @@
 
 This makes a REAL network call to OpenRouter (and costs credits). Its purpose is
 to confirm the Gemini-via-OpenRouter path actually returns valid
-strict-structured output — i.e. ``ToolOutput(ReceiptData, strict=True)`` plus
+strict-structured output, i.e. ``ToolOutput(ReceiptScan, strict=True)`` plus
 image input round-trips through ``settings.OPENROUTER_MODEL``, which a mocked
 unit test cannot verify.
 
 It is skipped unless BOTH are present, so the normal suite (and CI, which has no
 key) stays green:
 
-  - ``OPENROUTER_API_KEY`` — a real key (``settings`` reads it from env/.env)
+  - ``OPENROUTER_API_KEY``: a real key (``settings`` reads it from env/.env)
   - a receipt image at ``$LIVE_RECEIPT_IMAGE`` (falls back to
     ``backend_api/tests/fixtures/receipt.<jpg|jpeg|png>``)
 
@@ -25,11 +25,13 @@ from pathlib import Path
 import pytest
 from pydantic_ai import BinaryContent
 
-from backend_api.dto.receipt_item import ReceiptData
-from backend_api.ocr import get_openrouter_receipt_agent
+from backend_api.api import image_media_type
+from backend_api.dto.receipt_scan import ReceiptScan
+from backend_api.ocr import ScanAttempts, get_openrouter_receipt_agent
+from backend_api.receipt_allocation import allocate_scan
 
 _FIXTURE_DIR = Path(__file__).parent / "fixtures"
-_MEDIA_TYPES = {".jpg": "image/jpeg", ".jpeg": "image/jpeg", ".png": "image/png"}
+_SUFFIXES = (".jpg", ".jpeg", ".png")
 
 
 def _receipt_image() -> Path | None:
@@ -38,7 +40,7 @@ def _receipt_image() -> Path | None:
     if env_path:
         candidate = Path(env_path)
         return candidate if candidate.is_file() else None
-    for suffix in _MEDIA_TYPES:
+    for suffix in _SUFFIXES:
         candidate = _FIXTURE_DIR / f"receipt{suffix}"
         if candidate.is_file():
             return candidate
@@ -50,7 +52,7 @@ def _receipt_image() -> Path | None:
     not os.getenv("OPENROUTER_API_KEY"),
     reason="live test: set OPENROUTER_API_KEY to run",
 )
-def test_openrouter_live_extracts_valid_receipt():
+def test_openrouter_live_transcribes_a_receipt_that_can_be_allocated():
     image_path = _receipt_image()
     if image_path is None:
         pytest.skip(
@@ -60,22 +62,27 @@ def test_openrouter_live_extracts_valid_receipt():
 
     get_openrouter_receipt_agent.cache_clear()
     agent = get_openrouter_receipt_agent()
-    media_type = _MEDIA_TYPES.get(image_path.suffix.lower(), "image/jpeg")
+    data = image_path.read_bytes()
 
     async def _run():
         return await agent.run(
             [
                 "here is the image receipt:",
-                BinaryContent(data=image_path.read_bytes(), media_type=media_type),
-            ]
+                BinaryContent(data=data, media_type=image_media_type(data, None)),
+            ],
+            deps=ScanAttempts(),
         )
 
     result = asyncio.run(_run())
-    data = result.output
+    scan = result.output
 
-    # If agent.run() returned at all, the strict ToolOutput schema was honored
-    # by Gemini-via-OpenRouter and the output_validator passed. Assert the
-    # extraction is structurally sane.
-    assert isinstance(data, ReceiptData)
-    assert data.total_amount > 0
-    assert data.receipt_items, "expected at least one extracted line item"
+    # If agent.run() returned at all, the ToolOutput schema was honored by the
+    # model and the transcription could be read as money. One stochastic call
+    # cannot pin exact amounts, so assert what every outcome must satisfy.
+    assert isinstance(scan, ReceiptScan)
+    assert scan.items, "expected at least one transcribed item"
+    _, allocation = allocate_scan(scan)
+    assert allocation.status in {"reconciled", "needs_review", "mismatch"}
+    assert all(cost >= 0 for cost in allocation.costs.values())
+    if allocation.status == "reconciled" and not allocation.tax_added:
+        assert sum(allocation.costs.values()) == allocation.total

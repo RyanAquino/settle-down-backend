@@ -49,8 +49,13 @@ Request entry is `settledown/api.py`: one `NinjaAPI` protected by `GlobalAuth`, 
 It mounts two routers under `/api/`:
 
 - `/api/v1/receipts/receipt-items/` (`backend_api/api.py`) is **the OCR flow**.
-  An async `pydantic-ai` `Agent` from `get_openrouter_receipt_agent()` (OpenRouter, model `settings.OPENROUTER_MODEL`) reads the uploaded image with a strict `ToolOutput(ReceiptData)`, so the LLM must return a validated `ReceiptData` (items, EN/JP shop names, tax %, total, date) rather than free text.
+  An async `pydantic-ai` `Agent` from `get_openrouter_receipt_agent()` (OpenRouter, model `settings.OPENROUTER_MODEL`) reads the uploaded image with a strict `ToolOutput(ReceiptScan)` (`backend_api/dto/receipt_scan.py`).
+  The model only **transcribes**: printed item prices, every printed line that changes the amount to pay (discounts, coupons, points, surcharges, each with its printed amount, percent, base and the items it names), the tax lines and the amount due.
+  It never nets a discount into a price or computes a total.
+  `backend_api/receipt_allocation.py` does all of that money math (see below), and the response's `cost` is each line's share after every adjustment.
   It has one tool, `translate_jp_to_en_text` (Google Translate).
+  The output validator (`validate_receipt_scan`) asks for a re-read only when a transcription cannot be read as money, and for at most one targeted re-read when it does not add up; it records every attempt in `ScanAttempts` (the run's deps) and the run ends with the best one, not the last.
+  If a later read fails outright, the endpoint still answers with the best earlier attempt.
   The image is then uploaded to Cloudinary, falling back to catbox.moe on any exception (logged with its traceback).
   `get_receipt_agent()` is an alternate OpenAI/LLM7 factory (`gpt-5-mini`) wrapped by `backend_api/dto/llm7_override.py` (`LLM7ChatModel`), a parsing workaround; don't delete it as dead code.
 - `/api/v1/settle-up/...` (`backend_api/settleup_api.py`) lists groups, lists members, and creates a transaction.
@@ -66,7 +71,24 @@ Constructed fresh per request.
 Every upstream HTTP call passes `timeout=settings.UPSTREAM_HTTP_TIMEOUT`; ruff's `S113` fails CI if a new one doesn't.
 A missing group (Firebase answers `null`) raises `SettleUpGroupNotFoundError`.
 
-The money logic lives in `backend_api/utils.py` (pure functions, wrapped by `SettleUpClient._compute_transaction` / `_compute_weights`).
+### Receipt allocation (`backend_api/receipt_allocation.py`)
+
+Pure, integer minor units, and the only place receipt discounts are computed.
+The normative rules are in its module docstring and pinned by `backend_api/tests/fixtures/allocation-vectors.json`; read both before changing anything.
+
+- **Scope** of each adjustment is resolved from printed numbers: a printed base (`対象金額`) must equal what its items cost at that point in the receipt, and a printed percent must fit its items within one unit.
+  The items the model names are only a hint, which is what recovers the misreads seen live (a discount attached to the line above it).
+  No printed evidence means the named items or the whole receipt, marked `assumed`; evidence that fits nothing or several things is `unresolved`.
+- **Allocation** is in printed order, by largest remainder with exact integer remainders, ties to the lower `item_order`.
+  Don't reuse the app's `allocateMoney` logic: it ranks float remainders and breaks exact ties differently.
+- **Reconciliation**: the costs must equal the amount due, or do with one printed tax rate added on top (then `cost` stays pre-tax and `tax_percentage` carries the rate, today's shape), or with the points taken off a total the model read before them; printed per-rate taxable bases must agree.
+- **Fail closed**: `needs_review` or `mismatch` allocates nothing, so `cost` is the printed price and the installed app's check rejects the scan rather than filing a guessed split.
+  `backend_api/tests/client_gate.py` restates that app check, and the vectors assert it accepts exactly the reconciled results.
+- Redeemed points always reduce what the group splits, whether printed as a discount or as a payment.
+
+### Transaction money (`backend_api/utils.py`)
+
+The transaction money logic lives in `backend_api/utils.py` (pure functions, wrapped by `SettleUpClient._compute_transaction` / `_compute_weights`).
 Understand both before touching anything financial:
 
 - **`compute_member_totals()`** turns per-member items + shared items + a tax % + the trusted `total_amount` into `{member_id: amount_owed}` (in the group's currency).
@@ -79,8 +101,9 @@ Understand both before touching anything financial:
 
 ### Constraints baked into the current model (don't assume otherwise)
 
-- Tax is a single scalar applied **all-or-nothing**; mixed rates (e.g. JP 8% food vs 10%) are not representable.
-- `total_amount` is **trusted input**, never validated; the OCR prompt merely asks the LLM to make items sum to it.
+- On the transaction endpoint, tax is a single scalar applied **all-or-nothing**.
+  Scans with mixed rates work when tax is inside the prices (the costs already carry it); tax added on top at several rates, or a deduction after tax, does not reconcile and goes to review.
+- The transaction endpoint trusts `total_amount` and never checks it; the scan endpoint reconciles every scan against the printed totals before returning it.
 - The float-`==` tax heuristic means a one-unit rounding drift can silently flip the entire tax decision.
   Be careful changing any rounding or the comparison.
 - Transactions are filed in the group's currency, but there is **no FX conversion**: a receipt denominated differently from its group is recorded unconverted.
@@ -91,9 +114,10 @@ Understand both before touching anything financial:
 CI does not run these; check them locally with `uv run lint-imports` before changing imports between modules.
 
 
-Layers, top to bottom: `settledown.urls` > `settledown.api` > routers (`backend_api.api`, `settleup_api`) > integrations (`settleup_utils`, `ocr`, `services`) > `schemas` > `utils`, `firebase_auth` > `dto`.
+Layers, top to bottom: `settledown.urls` > `settledown.api` > routers (`backend_api.api`, `settleup_api`) > integrations (`settleup_utils`, `ocr`, `services`) > `schemas` > `utils`, `receipt_allocation`, `firebase_auth` > `dto`.
 A layer may only import layers below it, and siblings may not import each other.
-`backend_api.utils` must not import Django, ninja, `requests`, or any SDK, which is why it types its inputs structurally (`MemberCost` protocol) instead of importing `schemas.UserTransactionSchema`.
+`backend_api.utils` and `backend_api.receipt_allocation` must not import Django, ninja, `requests`, or any SDK, which is why `utils` types its inputs structurally (`MemberCost` protocol) instead of importing `schemas.UserTransactionSchema`, and why `dto/receipt_scan.py` must stay Django-free.
+A new pure module is unchecked until it is listed in the layers, the purity contract's `source_modules` and the strict mypy override.
 
 ## Gotchas
 
@@ -113,6 +137,10 @@ The fixture routes the mocked `requests.get` **by URL**: `groups/{id}.json` reso
 The mocked members endpoint returns exactly **Member 1 and Member 2** (`GROUP_MEMBERS`), and the split-related assertions in `test_transaction.py` depend on that two-member group.
 
 - `test_transaction.py` exercises `_compute_transaction()` across tax-included / tax-excluded / shared-split / fractional-tax / cent-rounding scenarios.
+- `test_receipt_allocation.py` runs every golden vector through conversion, scope resolution, allocation, reconciliation and the app-check restatement; `tests/scans.py` builds model transcriptions from the same vectors for the other tests.
+  Expected results in the vectors are worked out by hand, never pasted from the code's output.
+- `test_ocr_validator.py` drives the real agent loop offline with a scripted `FunctionModel` and pins the number of model requests per scan.
+- `test_ocr_agent.py::TestWireSchema` captures what each provider path sends the model (via `httpx.MockTransport`) and asserts every transcribed field is required with no default; on the Gemini path a default would make it silently optional.
 - `test_http_api.py` drives the API through Django's test `Client` (URL conf, middleware, auth) with the outbound boundaries mocked.
 
 pytest is configured in `pyproject.toml` (`DJANGO_SETTINGS_MODULE=settledown.settings`, `testpaths`, `-m "not live"`, strict markers/config).

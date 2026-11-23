@@ -197,12 +197,12 @@
             "type": "string"
           },
           "item_order": {
-            "description": "The position of the item on the receipt",
+            "description": "The position of the item on the receipt, from 1 in printed order",
             "title": "Item Order",
             "type": "integer"
           },
           "cost": {
-            "description": "The line price after any discount, for the quantity shown",
+            "description": "What this line cost after its share of every discount, coupon, points and surcharge, for the quantity shown; before tax when tax is added on top. The printed price when the receipt did not reconcile",
             "title": "Cost",
             "type": "number"
           },
@@ -212,7 +212,7 @@
             "type": "integer"
           },
           "discount": {
-            "description": "The discount on this line, already subtracted from cost",
+            "description": "Everything taken off this line's printed price, its own discounts and its share of receipt-wide ones, already subtracted from cost",
             "title": "Discount",
             "type": "number"
           }
@@ -249,12 +249,12 @@
             "type": "string"
           },
           "tax_percentage": {
-            "description": "The printed tax rate, or 0",
+            "description": "The printed tax rate, or the one with the largest taxable base, or 0. When the costs add up to total_amount it is for display only; otherwise it is the rate added on top of the costs",
             "title": "Tax Percentage",
             "type": "number"
           },
           "total_amount": {
-            "description": "The printed total of the receipt",
+            "description": "What the group splits: the amount paid after every discount, coupon and points. The costs add up to it, or do with tax_percentage added",
             "title": "Total Amount",
             "type": "number"
           },

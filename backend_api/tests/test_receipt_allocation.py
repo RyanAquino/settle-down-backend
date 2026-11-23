@@ -6,13 +6,10 @@ runs through conversion, scope resolution, allocation and reconciliation, and
 its result is checked against a restatement of the installed app's own check.
 """
 
-import json
 from fractions import Fraction
-from pathlib import Path
 
 import pytest
 
-from backend_api.dto.receipt_scan import ReceiptScan
 from backend_api.receipt_allocation import (
     Adjustment,
     Item,
@@ -27,61 +24,16 @@ from backend_api.receipt_allocation import (
     split_proportionally,
     to_minor_units,
 )
-from backend_api.tests import client_gate
+from backend_api.tests import client_gate, scans
 
-VECTORS = json.loads(
-    (Path(__file__).parent / "fixtures" / "allocation-vectors.json").read_text(
-        encoding="utf-8"
-    )
+
+@pytest.mark.parametrize(
+    "vector", scans.VECTORS, ids=[v["name"] for v in scans.VECTORS]
 )
-
-
-def _scan(vector: dict) -> ReceiptScan:
-    """The transcription the OCR model would return for a vector, as JSON."""
-    orders = vector.get("items_as_read") or range(1, len(vector["items"]) + 1)
-    return ReceiptScan.model_validate(
-        {
-            "jp_shop_name": "テスト",
-            "en_shop_name": "Test",
-            "receipt_date": None,
-            "decimal_places": vector["decimal_places"],
-            "items": [
-                {
-                    "item_order": order,
-                    "japanese_name": f"商品{position}",
-                    "english_name": f"Item {position}",
-                    "quantity": 1,
-                    "printed_price": price,
-                }
-                for position, (order, price) in enumerate(
-                    zip(orders, vector["items"], strict=True), start=1
-                )
-            ],
-            "adjustments": [
-                {
-                    "printed_label": adjustment["label"],
-                    "kind": adjustment["kind"],
-                    "amount": adjustment["amount"],
-                    "percentage": adjustment["percentage"],
-                    "item_orders": adjustment["item_orders"],
-                    "eligible_subtotal": adjustment["eligible_subtotal"],
-                }
-                for adjustment in vector["adjustments"]
-            ],
-            "tax_lines": [
-                {"rate": rate, "taxable_amount": base, "tax_amount": tax}
-                for rate, base, tax in vector["tax_lines"]
-            ],
-            "amount_due": vector["amount_due"],
-        }
-    )
-
-
-@pytest.mark.parametrize("vector", VECTORS, ids=[v["name"] for v in VECTORS])
 class TestGoldenVectors:
     def test_allocation_matches_the_worked_result(self, vector):
         expected = vector["expected"]
-        receipt, result = allocate_scan(_scan(vector))
+        receipt, result = allocate_scan(scans.scan(vector))
         places = receipt.decimal_places
 
         assert result.status == expected["status"]
@@ -102,7 +54,7 @@ class TestGoldenVectors:
             ] == expected["allocations"]
 
     def test_reconciled_receipts_add_up_and_balance_every_adjustment(self, vector):
-        receipt, result = allocate_scan(_scan(vector))
+        receipt, result = allocate_scan(scans.scan(vector))
         if result.status != "reconciled":
             return
         moved = dict.fromkeys(result.costs, 0)
@@ -119,7 +71,7 @@ class TestGoldenVectors:
             assert sum(result.costs.values()) == result.total
 
     def test_the_installed_app_accepts_exactly_the_reconciled_receipts(self, vector):
-        receipt, result = allocate_scan(_scan(vector))
+        receipt, result = allocate_scan(scans.scan(vector))
         places = receipt.decimal_places
         accepted = client_gate.accepts(
             costs=[from_minor_units(cost, places) for cost in result.costs.values()],
@@ -197,8 +149,7 @@ class TestMinorUnits:
 
 class TestTranscriptionErrors:
     def _vector(self, **changes):
-        vector = {**next(v for v in VECTORS if v["name"] == "sugi"), **changes}
-        return _scan(vector)
+        return scans.scan({**scans.vector("sugi"), **changes})
 
     def test_no_items(self):
         with pytest.raises(TranscriptionError, match="No purchased items"):

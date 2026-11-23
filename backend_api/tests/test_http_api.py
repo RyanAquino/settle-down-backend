@@ -7,16 +7,18 @@ the OCR agent and image hosts (patched per test).
 """
 
 import logging
-from datetime import datetime
+from datetime import UTC, datetime
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 from django.core.files.uploadedfile import SimpleUploadedFile
 from django.test import Client, override_settings
-from pydantic_ai import BinaryContent
+from pydantic_ai import BinaryContent, UnexpectedModelBehavior
 
-from backend_api.dto.receipt_item import ReceiptData, ReceiptItemData
+from backend_api.dto.receipt_scan import ReceiptScan
+from backend_api.receipt_allocation import allocate_scan
+from backend_api.tests import client_gate, scans
 
 TOKEN = "test-app-token"
 AUTH = {"HTTP_AUTHORIZATION": f"Bearer {TOKEN}"}
@@ -167,22 +169,28 @@ class TestSettleUpEndpoints:
         mock_settleup.requests.post.assert_not_called()
 
 
-RECEIPT = ReceiptData(
-    receipt_items=[
-        ReceiptItemData(
-            english_name="Onigiri",
-            japanese_name="おにぎり",
-            item_order=1,
-            cost=300,
-            quantity=2,
-        )
-    ],
-    en_shop_name="Sample Mart",
-    jp_shop_name="サンプルマート",
-    tax_percentage=10,
-    total_amount=330,
-    # Naive on purpose: the model reports the receipt's JST wall time.
-    receipt_date=datetime(2026, 5, 30, 12, 34, 56),  # noqa: DTZ001
+# A plain receipt as the OCR model transcribes it: one line, 10% tax added on
+# top. Its response is the same as before discounts were allocated.
+RECEIPT = ReceiptScan.model_validate(
+    {
+        "jp_shop_name": "サンプルマート",
+        "en_shop_name": "Sample Mart",
+        # The model reports the receipt's JST wall time, without an offset.
+        "receipt_date": "2026-05-30T12:34:56",
+        "decimal_places": 0,
+        "items": [
+            {
+                "item_order": 1,
+                "japanese_name": "おにぎり",
+                "english_name": "Onigiri",
+                "quantity": 2,
+                "printed_price": 300,
+            }
+        ],
+        "adjustments": [],
+        "tax_lines": [{"rate": 10, "taxable_amount": None, "tax_amount": 30}],
+        "amount_due": 330,
+    }
 )
 
 
@@ -295,3 +303,122 @@ class TestReceiptEndpoint:
 
         assert response.status_code == 422
         ocr_agent.run.assert_not_awaited()
+
+
+def _scan_response(client, ocr_agent, scan):
+    ocr_agent.run.return_value = SimpleNamespace(output=scan)
+    with patch(
+        "backend_api.api.cloudinary_upload_file",
+        return_value="https://res.cloudinary.com/r.jpg",
+    ):
+        response = client.post(RECEIPT_URL, {"file": _upload()}, **AUTH)
+    assert response.status_code == 200
+    return response.json()
+
+
+def _accepted_by_installed_app(body):
+    items = body["receipt_items"]
+    return client_gate.accepts(
+        costs=[item["cost"] for item in items],
+        tax_percentage=body["tax_percentage"],
+        total=body["total_amount"],
+        item_orders=[item["item_order"] for item in items],
+    )
+
+
+class TestDiscountedReceipts:
+    """Item costs carry every discount, so installed apps need no release."""
+
+    def test_each_line_costs_its_share_after_every_discount(self, client, ocr_agent):
+        body = _scan_response(client, ocr_agent, scans.scan(scans.vector("sugi")))
+
+        assert [
+            (item["item_order"], item["cost"], item["discount"])
+            for item in body["receipt_items"]
+        ] == [
+            (1, 837.0, 150.0),
+            (2, 744.0, 133.0),
+            (3, 1809.0, 501.0),
+            (4, 1533.0, 425.0),
+            (5, 650.0, 117.0),
+            (6, 236.0, 42.0),
+        ]
+        assert body["total_amount"] == 5809.0
+        assert body["tax_percentage"] == 10.0
+        assert body["jp_shop_name"] == "テスト薬局"
+        assert body["receipt_date"] == "2026-11-23T15:16:00"
+        assert _accepted_by_installed_app(body)
+
+    def test_a_receipt_a_person_must_review_keeps_its_printed_prices(
+        self, client, ocr_agent
+    ):
+        ambiguous = scans.vector("sugi_both_item_discounts_read_under_one_item")
+
+        body = _scan_response(client, ocr_agent, scans.scan(ambiguous))
+
+        assert [item["cost"] for item in body["receipt_items"]] == [
+            987.0,
+            877.0,
+            2310.0,
+            1958.0,
+            767.0,
+            278.0,
+        ]
+        assert {item["discount"] for item in body["receipt_items"]} == {0.0}
+        assert body["total_amount"] == 5809.0
+        # Fail closed: the installed app rejects it rather than file a guess.
+        assert not _accepted_by_installed_app(body)
+
+    def test_cents_are_returned_as_printed(self, client, ocr_agent):
+        cents = scans.vector("coupon_before_tax_in_cents")
+
+        body = _scan_response(client, ocr_agent, scans.scan(cents))
+
+        assert [item["cost"] for item in body["receipt_items"]] == [11.72, 6.75, 4.51]
+        assert body["tax_percentage"] == 8.25
+        assert body["total_amount"] == 24.88
+        assert _accepted_by_installed_app(body)
+
+    def test_a_receipt_without_a_date_is_dated_now(self, client, ocr_agent):
+        now = datetime(2026, 11, 23, 6, 16, tzinfo=UTC)
+        undated = scans.scan(scans.vector("sugi"), receipt_date=None)
+
+        with patch("backend_api.api.timezone.now", return_value=now):
+            body = _scan_response(client, ocr_agent, undated)
+
+        assert body["receipt_date"] == "2026-11-23T06:16:00Z"
+
+
+class TestFailedReads:
+    def test_a_read_that_fails_after_a_usable_attempt_answers_with_it(
+        self, client, ocr_agent, caplog
+    ):
+        usable = scans.scan(scans.vector("sugi_points_line_dropped"))
+
+        async def fail_after_one_attempt(prompt, deps):
+            deps.record(usable, allocate_scan(usable)[1])
+            raise UnexpectedModelBehavior("Exceeded maximum output retries (2)")
+
+        ocr_agent.run.side_effect = fail_after_one_attempt
+        with (
+            patch(
+                "backend_api.api.cloudinary_upload_file",
+                return_value="https://res.cloudinary.com/r.jpg",
+            ),
+            caplog.at_level(logging.WARNING, logger="backend_api.api"),
+        ):
+            response = client.post(RECEIPT_URL, {"file": _upload()}, **AUTH)
+
+        assert response.status_code == 200
+        body = response.json()
+        assert body["total_amount"] == 5809.0
+        assert not _accepted_by_installed_app(body)
+        (record,) = caplog.records
+        assert "using the best attempt" in record.getMessage()
+        assert isinstance(record.exc_info[1], UnexpectedModelBehavior)
+
+    def test_a_read_with_no_usable_attempt_is_an_error(self, client, ocr_agent):
+        ocr_agent.run.side_effect = UnexpectedModelBehavior("Exceeded retries")
+
+        with pytest.raises(UnexpectedModelBehavior):
+            client.post(RECEIPT_URL, {"file": _upload()}, **AUTH)

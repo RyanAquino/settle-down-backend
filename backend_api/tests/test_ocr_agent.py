@@ -8,16 +8,29 @@ construct the client eagerly (a missing key would raise).
 """
 
 import asyncio
+import json
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, patch
 
+import httpx
 import pytest
 from django.test import override_settings
+from openai import AsyncOpenAI
 from pydantic_ai import Agent, ModelRetry
 from pydantic_ai.models.openai import OpenAIChatModel
+from pydantic_ai.models.openrouter import OpenRouterModel
+from pydantic_ai.providers.openai import OpenAIProvider
+from pydantic_ai.providers.openrouter import OpenRouterProvider
 
 from backend_api.dto.llm7_override import LLM7ChatModel
-from backend_api.ocr import get_openrouter_receipt_agent, get_receipt_agent
+from backend_api.dto.receipt_scan import ReceiptScan
+from backend_api.ocr import (
+    ScanAttempts,
+    _build_agent,
+    get_openrouter_receipt_agent,
+    get_receipt_agent,
+)
+from backend_api.tests import scans
 
 # The id ``settledown/settings.py`` falls back to when OPENROUTER_MODEL is unset.
 # Overridden onto the settings below rather than read from them: ``load_dotenv()``
@@ -108,3 +121,117 @@ def test_translate_tool_asks_the_model_to_retry_on_failure():
             asyncio.run(_translate_tool()("おにぎり"))
 
     assert isinstance(exc.value.__cause__, OSError)
+
+
+class _ChatCompletions:
+    """A chat-completions endpoint that records requests and returns a tool call."""
+
+    def __init__(self, payload):
+        self.payload = payload
+        self.requests = []
+
+    def handle(self, request: httpx.Request) -> httpx.Response:
+        body = json.loads(request.content)
+        self.requests.append(body)
+        return httpx.Response(
+            200,
+            json={
+                "id": "gen-1",
+                "object": "chat.completion",
+                "created": 1_767_225_600,
+                "model": body["model"],
+                "provider": "Offline",
+                "choices": [
+                    {
+                        "index": 0,
+                        "finish_reason": "tool_calls",
+                        "message": {
+                            "role": "assistant",
+                            "content": None,
+                            "tool_calls": [
+                                {
+                                    "id": "call_1",
+                                    "type": "function",
+                                    "function": {
+                                        "name": "final_result",
+                                        "arguments": json.dumps(self.payload),
+                                    },
+                                }
+                            ],
+                        },
+                    }
+                ],
+                "usage": {
+                    "prompt_tokens": 1,
+                    "completion_tokens": 1,
+                    "total_tokens": 2,
+                },
+            },
+        )
+
+    def client(self) -> httpx.AsyncClient:
+        return httpx.AsyncClient(transport=httpx.MockTransport(self.handle))
+
+
+def _openrouter_gemini(endpoint):
+    return OpenRouterModel(
+        DEFAULT_OPENROUTER_MODEL,
+        provider=OpenRouterProvider(api_key="test-key", http_client=endpoint.client()),
+    )
+
+
+def _llm7(endpoint):
+    client = AsyncOpenAI(api_key="test-key", http_client=endpoint.client())
+    return LLM7ChatModel("gpt-5-mini", provider=OpenAIProvider(openai_client=client))
+
+
+def _objects(schema):
+    """Every JSON-schema object node, nested definitions included."""
+    if isinstance(schema, dict):
+        if "properties" in schema:
+            yield schema
+        for value in schema.values():
+            yield from _objects(value)
+    elif isinstance(schema, list):
+        for value in schema:
+            yield from _objects(value)
+
+
+def _defaults(schema):
+    if isinstance(schema, dict):
+        if "default" in schema:
+            yield schema
+        for value in schema.values():
+            yield from _defaults(value)
+    elif isinstance(schema, list):
+        for value in schema:
+            yield from _defaults(value)
+
+
+@pytest.mark.parametrize("build", [_openrouter_gemini, _llm7], ids=["gemini", "llm7"])
+class TestWireSchema:
+    """What each provider path actually sends the model, captured offline."""
+
+    def test_every_transcribed_field_is_required(self, build):
+        # On the Gemini path a field with a default is optional on the wire,
+        # so the model could leave out an amount without being asked again.
+        sugi = scans.scan_payload(scans.vector("sugi"))
+        endpoint = _ChatCompletions(sugi)
+
+        result = _build_agent(build(endpoint)).run_sync(
+            "here is the image receipt:", deps=ScanAttempts()
+        )
+
+        (request,) = endpoint.requests
+        (tool,) = [
+            tool
+            for tool in request["tools"]
+            if tool["function"]["name"] == "final_result"
+        ]
+        parameters = tool["function"]["parameters"]
+        objects = list(_objects(parameters))
+        assert len(objects) == 4  # receipt, item, adjustment, tax line
+        for node in objects:
+            assert set(node["required"]) == set(node["properties"])
+        assert list(_defaults(parameters)) == []
+        assert result.output == ReceiptScan.model_validate(sugi)

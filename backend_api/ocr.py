@@ -2,68 +2,129 @@
 
 Provider-specific pydantic-ai Agents are built once each via lazy, cached
 factories. Lazy (not module-level) so importing this module never constructs a
-client/provider — which raises if the relevant API key is unset.
+client/provider, which raises if the relevant API key is unset.
 
 - ``get_receipt_agent``: OpenAI client + LLM7 model wrapper + translate tool.
 - ``get_openrouter_receipt_agent``: OpenRouter provider (clean OpenAIChatModel).
 
 Both delegate to ``_build_agent`` for the shared output schema, instructions,
-retry budget, output validator, and translate tool — the only difference is the
+retry budget, output validator, and translate tool. The only difference is the
 underlying model/provider.
+
+The model only transcribes what is printed (``ReceiptScan``). It never nets a
+discount into a price or computes a total: ``backend_api.receipt_allocation``
+does all of the money math, and the output validator uses it to decide whether
+a transcription is worth reading again.
 """
 
+from dataclasses import dataclass, field
+from decimal import Decimal
 from functools import lru_cache
 
 from django.conf import settings
 from googletrans import Translator
 from openai import AsyncOpenAI
-from pydantic_ai import Agent, ModelRetry, ToolOutput
+from pydantic_ai import Agent, ModelRetry, RunContext, ToolOutput
 from pydantic_ai.models import Model
 from pydantic_ai.models.openrouter import OpenRouterModel
 from pydantic_ai.providers.openai import OpenAIProvider
 from pydantic_ai.providers.openrouter import OpenRouterProvider
 
 from backend_api.dto.llm7_override import LLM7ChatModel
-from backend_api.dto.receipt_item import ReceiptData
+from backend_api.dto.receipt_scan import ReceiptScan
+from backend_api.receipt_allocation import (
+    Allocation,
+    TranscriptionError,
+    allocate_scan,
+)
 
 INSTRUCTIONS = """\
 You are an expert receipt-reading system for Japanese and English receipts.
-You receive a receipt as an image. Extract the fields defined by the output schema, following these rules:
+You receive a receipt as an image. Transcribe it into the output schema. Copy what is printed; never calculate, net or adjust an amount yourself.
 
-- Languages: the receipt may be Japanese, English, or both. For every name (each item and the shop), provide BOTH the original Japanese text and an English translation. Never discard or overwrite the original Japanese.
-- Amounts: report every amount in the receipt's own currency — do not convert. Strip currency marks (¥, 円, $, NT$, HK$, US$, €) and comma grouping (e.g. "1,200" -> 1200); digits may be full-width (１２３). Zero-decimal currencies (JPY, KRW, TWD) are whole integers — never invent a fractional part; currencies that carry cents (USD, EUR, HKD) keep the decimals as printed.
-- Items: list each purchased line item. `cost` is the final price for that line AFTER any discount, for the quantity shown (it is a line total, not a per-unit price). If a line has no price or 0, omit it.
-- Discounts: when a discount line applies to the item directly above it, subtract it from that item's `cost`; do not emit discounts as their own items.
-- Tax: set `tax_percentage` to the rate printed on the receipt (use 0 if none is shown).
-- Total: copy `total_amount` exactly as printed — it is authoritative. Do not recompute or adjust it. The printed total may already include tax or have tax added on top; preserve it verbatim and make the item costs consistent with it.
-- Date: report `receipt_date` in Japan Standard Time (JST). If the receipt shows no date, leave it unset.
+- Languages: the receipt may be Japanese, English, or both. For every item and the shop, give the name as printed and an English translation. Never discard the original text.
+- Amounts: report every amount in the receipt's own currency; do not convert. Strip currency marks (¥, 円, $, NT$, HK$, US$, €) and comma grouping ("1,200" -> 1200); digits may be full-width (１２３). Every amount is a positive number: the field says what it means, so drop printed minus signs, triangle marks and brackets. `decimal_places` is 0 for currencies without minor units (yen, won, Taiwan dollars) and 2 for currencies with cents (US dollars, euros, Hong Kong dollars); amounts keep the decimals they are printed with.
+- Items: list every purchased line in printed order, numbered from 1 in `item_order`. `printed_price` is the amount printed on the item's own line for the quantity shown, BEFORE any discount line; never subtract anything from it. Keep an item even when a coupon makes it free. Discount lines, totals, tax lines and payment lines are never items. Marks before a name, such as *, ※, 軽, A or B, are not part of the name.
+- Adjustments: list EVERY printed line that lowers or raises the amount to pay, in printed order, each exactly once: item discounts (値引, 割引, 1品割引, 見切り, 半額), multi-item and all-item discounts (まとめ値引, セット割, 全品割引), coupons (クーポン), loyalty points used (ポイント値引, ポイント利用, ポイント支払) and surcharges (サービス料, service charge). `amount` is the money amount printed on that line and `percentage` is the percent printed on it, if any. Never compute one from the other.
+- Scope: fill `item_orders` only when the receipt shows which items a line applies to. A discount printed directly under one item applies to that item. A set discount applies to the items it names. Leave `item_orders` empty when the line applies to the whole receipt or the receipt does not identify its items; never guess. When the receipt prints the base amount a line was calculated on (対象金額, 割引対象額), copy it into that line's `eligible_subtotal`. The base line itself is not an item, a total or an adjustment.
+- Not adjustments: subtotals and totals (小計, 合計, お買物合計, 支払合計), tax lines, base-amount lines, points earned or point balances, and payment lines (現金, クレジット, 電子マネー, barcode or QR payments, 商品券, お預り, お釣り). Points used to pay are an adjustment of kind `points`.
+- Total: `amount_due` is the final amount the customer had to pay after every discount, coupon and points line (支払合計, or 合計 when nothing is deducted after it).
+- Tax: copy each printed tax-rate line into `tax_lines` with its rate, its taxable base (対象) and its tax amount, using null for what is not printed. A percent printed on a discount line is a discount rate, never a tax rate.
+- Date: report `receipt_date` in Japan Standard Time. If the receipt shows no date, use null.
 """
 
+# Best first: a scan that reconciles, then one that only needs a person to
+# confirm which items an adjustment covers, then one that does not add up.
+_STATUS_RANK = {"reconciled": 0, "needs_review": 1, "mismatch": 2}
 
-def validate_receipt_data(data: ReceiptData) -> ReceiptData:
-    """Catch gross extraction errors without rejecting plausible receipts.
 
-    Deliberately does NOT enforce that item costs sum to total_amount: JP
-    receipts mix 8%/10% tax (not representable here, per CLAUDE.md), so a strict
-    sum check would falsely reject common receipts and exhaust retries -> 500.
-    total_amount is trusted input; we only guard against obviously-broken output.
+@dataclass
+class ScanAttempts:
+    """Every transcription of one photo that could be read as money.
+
+    Passed to the agent as its run dependencies, so the output validator can
+    return the best attempt of the run rather than the last one, and the
+    endpoint can still answer with it if a later read fails outright.
     """
-    if data.total_amount <= 0:
-        raise ModelRetry("total_amount must be the positive printed grand total.")
-    if not data.receipt_items:
-        raise ModelRetry(
-            "No line items found; re-read the image and list each priced item."
+
+    attempts: list[tuple[ReceiptScan, Allocation]] = field(default_factory=list)
+    reread_requested: bool = False
+
+    def record(self, scan: ReceiptScan, allocation: Allocation) -> None:
+        self.attempts.append((scan, allocation))
+
+    def best(self) -> ReceiptScan | None:
+        """The best-ranked attempt, the earliest among equals."""
+        if not self.attempts:
+            return None
+        scan, _ = min(
+            self.attempts, key=lambda attempt: _STATUS_RANK[attempt[1].status]
         )
-    for item in data.receipt_items:
-        if item.cost < 0:
-            raise ModelRetry(
-                f"Item '{item.english_name}' has negative cost; costs are "
-                "post-discount and must be >= 0."
-            )
-    return data
+        return scan
 
 
-def _build_agent(model: Model) -> Agent[None, ReceiptData]:
+def _reread_message(allocation: Allocation, decimal_places: int) -> str:
+    gap = format(Decimal(abs(allocation.difference)).scaleb(-decimal_places), "f")
+    return (
+        "The transcription does not add up: the printed prices, the adjustments "
+        f"you listed and the printed totals leave a difference of {gap}. "
+        "Read the receipt again. "
+        "Copy every purchased line and every discount, coupon, points and "
+        "surcharge line exactly once, as printed, and make sure amount_due is the "
+        "final amount paid. Do not add a line that is not printed to close the gap."
+    )
+
+
+def validate_receipt_scan(
+    ctx: RunContext[ScanAttempts], scan: ReceiptScan
+) -> ReceiptScan:
+    """Ask for a re-read only when it can help, and keep the best attempt.
+
+    - A transcription that cannot be read as money (no items, a negative
+      price, no amount due) is read again on the shared retry budget.
+    - One that does not add up gets one targeted re-read.
+    - Anything else is accepted. An adjustment whose items the printed numbers
+      cannot settle is for a person to confirm, not for another read.
+    """
+    try:
+        receipt, allocation = allocate_scan(scan)
+    except TranscriptionError as error:
+        raise ModelRetry(str(error)) from error
+
+    ctx.deps.record(scan, allocation)
+    if allocation.status == "reconciled":
+        return scan
+    if (
+        allocation.status == "mismatch"
+        and not ctx.deps.reread_requested
+        and not ctx.last_attempt
+    ):
+        ctx.deps.reread_requested = True
+        raise ModelRetry(_reread_message(allocation, receipt.decimal_places))
+    return ctx.deps.best() or scan
+
+
+def _build_agent(model: Model) -> Agent[ScanAttempts, ReceiptScan]:
     """Assemble the receipt-reading agent around a provider-specific model.
 
     Everything except the underlying model/provider is shared: the output
@@ -71,11 +132,12 @@ def _build_agent(model: Model) -> Agent[None, ReceiptData]:
     """
     agent = Agent(
         model=model,
-        output_type=ToolOutput(ReceiptData, strict=True),
+        deps_type=ScanAttempts,
+        output_type=ToolOutput(ReceiptScan, strict=True),
         instructions=INSTRUCTIONS,
         retries=2,
     )
-    agent.output_validator(validate_receipt_data)
+    agent.output_validator(validate_receipt_scan)
 
     @agent.tool_plain
     async def translate_jp_to_en_text(text: str) -> str:
@@ -98,7 +160,7 @@ def _build_agent(model: Model) -> Agent[None, ReceiptData]:
 
 
 @lru_cache(maxsize=1)
-def get_receipt_agent() -> Agent[None, ReceiptData]:
+def get_receipt_agent() -> Agent[ScanAttempts, ReceiptScan]:
     """Build (once) the receipt agent backed by the OpenAI/LLM7 model.
 
     Talks to OpenAI by default; LLM7 is OpenAI-compatible, so pointing the
@@ -110,7 +172,7 @@ def get_receipt_agent() -> Agent[None, ReceiptData]:
 
 
 @lru_cache(maxsize=1)
-def get_openrouter_receipt_agent() -> Agent[None, ReceiptData]:
+def get_openrouter_receipt_agent() -> Agent[ScanAttempts, ReceiptScan]:
     """Build (once) the receipt agent backed by OpenRouter.
 
     Uses a clean ``OpenAIChatModel``: OpenRouter returns OpenAI-compliant
