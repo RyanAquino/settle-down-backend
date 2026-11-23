@@ -219,6 +219,23 @@ class TestReceiptEndpoint:
         images = [part for part in prompt if isinstance(part, BinaryContent)]
         assert [image.data for image in images] == [b"jpeg-bytes"]
 
+    def test_tells_the_model_the_real_image_type(self, client, ocr_agent):
+        png = b"\x89PNG\r\n\x1a\n\x00\x00\x00\rIHDR"
+        upload = SimpleUploadedFile(
+            "receipt.png", png, content_type="application/octet-stream"
+        )
+        with patch(
+            "backend_api.api.cloudinary_upload_file",
+            return_value="https://res.cloudinary.com/r.png",
+        ):
+            response = client.post(RECEIPT_URL, {"file": upload}, **AUTH)
+
+        assert response.status_code == 200
+        prompt = ocr_agent.run.await_args.args[0]
+        (image,) = [part for part in prompt if isinstance(part, BinaryContent)]
+        assert image.media_type == "image/png"
+        assert image.data == png
+
     def test_falls_back_to_catbox_when_cloudinary_fails(
         self, client, ocr_agent, caplog
     ):
