@@ -186,6 +186,13 @@
     "schemas": {
       "OCRReceiptPostOut": {
         "properties": {
+          "receipt_adjustments": {
+            "items": {
+              "$ref": "#/components/schemas/ReceiptAdjustment"
+            },
+            "title": "Receipt Adjustments",
+            "type": "array"
+          },
           "receipt_items": {
             "items": {
               "$ref": "#/components/schemas/ReceiptItemData"
@@ -211,7 +218,7 @@
           },
           "total_amount": {
             "default": 0,
-            "description": "The total amount of all items in the receipt",
+            "description": "Final amount paid after all discounts and redeemed points",
             "title": "Total Amount",
             "type": "number"
           },
@@ -236,6 +243,38 @@
         "title": "OCRReceiptPostOut",
         "type": "object"
       },
+      "ReceiptAdjustment": {
+        "properties": {
+          "kind": {
+            "enum": [
+              "discount",
+              "points_redemption"
+            ],
+            "title": "Kind",
+            "type": "string"
+          },
+          "amount": {
+            "description": "Positive monetary value deducted once across the receipt",
+            "exclusiveMinimum": 0,
+            "title": "Amount",
+            "type": "number"
+          },
+          "item_orders": {
+            "description": "Eligible item_order values when identifiable; empty for the whole basket",
+            "items": {
+              "type": "integer"
+            },
+            "title": "Item Orders",
+            "type": "array"
+          }
+        },
+        "required": [
+          "kind",
+          "amount"
+        ],
+        "title": "ReceiptAdjustment",
+        "type": "object"
+      },
       "ReceiptItemData": {
         "description": "Receipt Item model for each item in the receipt.",
         "properties": {
@@ -255,7 +294,7 @@
             "type": "integer"
           },
           "cost": {
-            "description": "The final line price for this item after any discount, for the quantity shown",
+            "description": "Line total for the quantity shown, after item-specific discounts and before receipt adjustments",
             "title": "Cost",
             "type": "number"
           },
