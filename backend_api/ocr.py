@@ -49,7 +49,7 @@ You receive a receipt as an image. Transcribe it into the output schema. Copy wh
 - Scope: fill `item_orders` only when the receipt shows which items a line applies to. A discount printed directly under one item applies to that item. A set discount applies to the items it names. Leave `item_orders` empty when the line applies to the whole receipt or the receipt does not identify its items; never guess. When the receipt prints the base amount a line was calculated on (対象金額, 割引対象額), copy it into that line's `eligible_subtotal`. The base line itself is not an item, a total or an adjustment.
 - Not adjustments: subtotals and totals (小計, 合計, お買物合計, 支払合計), tax lines, base-amount lines, points earned or point balances, and payment lines (現金, クレジット, 電子マネー, barcode or QR payments, 商品券, お預り, お釣り). Points used to pay are an adjustment of kind `points`.
 - Total: `amount_due` is the final amount the customer had to pay after every discount, coupon and points line (支払合計, or 合計 when nothing is deducted after it).
-- Tax: copy each printed tax-rate line into `tax_lines` with its rate, its taxable base (対象) and its tax amount, using null for what is not printed. A percent printed on a discount line is a discount rate, never a tax rate.
+- Tax: copy each printed tax line into `tax_lines` with its rate, its taxable base (対象) and its tax amount, using null for what is not printed. A tax amount printed without a rate (e.g. "Tax: 10.00") is still a tax line. A percent printed on a discount line is a discount rate, never a tax rate.
 - Date: report `receipt_date` in Japan Standard Time. If the receipt shows no date, use null.
 """
 

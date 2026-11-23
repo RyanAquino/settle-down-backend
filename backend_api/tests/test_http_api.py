@@ -194,6 +194,16 @@ RECEIPT = ReceiptScan.model_validate(
 )
 
 
+LEGACY_RECEIPT_FIELDS = [
+    "en_shop_name",
+    "jp_shop_name",
+    "tax_percentage",
+    "total_amount",
+    "receipt_date",
+    "receipt_image_url",
+]
+
+
 @pytest.fixture
 def ocr_agent():
     agent = MagicMock()
@@ -208,7 +218,7 @@ def _upload():
 
 class TestReceiptEndpoint:
     def test_response_body_is_the_scan_contract(self, client, ocr_agent):
-        """The exact body the installed app parses: every field, nothing else."""
+        """Every field the installed app parses is unchanged; the rest is additive."""
         with patch(
             "backend_api.api.cloudinary_upload_file",
             return_value="https://res.cloudinary.com/r.jpg",
@@ -216,7 +226,23 @@ class TestReceiptEndpoint:
             response = client.post(RECEIPT_URL, {"file": _upload()}, **AUTH)
 
         assert response.status_code == 200
-        assert response.json() == {
+        body = response.json()
+        # The body as it was before discounts were allocated, field for field.
+        legacy_item_fields = [
+            "english_name",
+            "japanese_name",
+            "item_order",
+            "cost",
+            "quantity",
+            "discount",
+        ]
+        assert {
+            **{key: body[key] for key in LEGACY_RECEIPT_FIELDS},
+            "receipt_items": [
+                {key: item[key] for key in legacy_item_fields}
+                for item in body["receipt_items"]
+            ],
+        } == {
             "receipt_items": [
                 {
                     "english_name": "Onigiri",
@@ -233,6 +259,18 @@ class TestReceiptEndpoint:
             "total_amount": 330.0,
             "receipt_date": "2026-05-30T12:34:56",
             "receipt_image_url": "https://res.cloudinary.com/r.jpg",
+        }
+        # What the review step reads.
+        assert body["receipt_items"][0]["list_price"] == 300.0
+        assert {
+            key: body[key]
+            for key in body
+            if key not in LEGACY_RECEIPT_FIELDS and key != "receipt_items"
+        } == {
+            "decimal_places": 0,
+            "adjustments": [],
+            "tax_lines": [{"rate": 10.0, "taxable_amount": None, "tax_amount": 30.0}],
+            "reconciliation": {"status": "reconciled", "difference": 0.0},
         }
 
     def test_extracts_receipt_and_hosts_image_on_cloudinary(self, client, ocr_agent):
@@ -422,3 +460,233 @@ class TestFailedReads:
 
         with pytest.raises(UnexpectedModelBehavior):
             client.post(RECEIPT_URL, {"file": _upload()}, **AUTH)
+
+
+ALLOCATIONS_URL = "/api/v1/receipts/allocations/"
+
+
+def _correction(body, **changes):
+    """Post a scan response back as a correction, as the app's review step does."""
+    return {
+        "decimal_places": body["decimal_places"],
+        "receipt_items": body["receipt_items"],
+        "adjustments": body["adjustments"],
+        "tax_lines": body["tax_lines"],
+        "total_amount": body["total_amount"],
+        **changes,
+    }
+
+
+class TestReviewFields:
+    def test_a_reconciled_scan_lists_each_adjustment_and_its_shares(
+        self, client, ocr_agent
+    ):
+        body = _scan_response(client, ocr_agent, scans.scan(scans.vector("sugi")))
+
+        assert [item["list_price"] for item in body["receipt_items"]] == [
+            987.0,
+            877.0,
+            2310.0,
+            1958.0,
+            767.0,
+            278.0,
+        ]
+        assert [
+            (
+                entry["printed_label"],
+                entry["kind"],
+                entry["status"],
+                entry["item_orders"],
+                {
+                    share["item_order"]: share["amount"]
+                    for share in entry["allocations"]
+                },
+            )
+            for entry in body["adjustments"]
+        ] == [
+            ("1品割引", "discount", "verified", [3], {3: 347.0}),
+            ("1品割引", "discount", "verified", [4], {4: 294.0}),
+            (
+                "全品割引",
+                "discount",
+                "verified",
+                [1, 2, 5, 6],
+                {1: 79.0, 2: 70.0, 5: 62.0, 6: 22.0},
+            ),
+            (
+                "スギポイント値引金額",
+                "points",
+                "assumed",
+                [1, 2, 3, 4, 5, 6],
+                {1: 71.0, 2: 63.0, 3: 154.0, 4: 131.0, 5: 55.0, 6: 20.0},
+            ),
+        ]
+        assert body["adjustments"][2]["percentage"] == 8.0
+        assert body["adjustments"][2]["eligible_subtotal"] == 2909.0
+        assert body["reconciliation"] == {"status": "reconciled", "difference": 0.0}
+        assert body["decimal_places"] == 0
+
+    def test_a_scan_needing_review_shows_scopes_but_no_shares(self, client, ocr_agent):
+        ambiguous = scans.vector("sugi_both_item_discounts_read_under_one_item")
+
+        body = _scan_response(client, ocr_agent, scans.scan(ambiguous))
+
+        assert body["reconciliation"] == {"status": "needs_review", "difference": 0.0}
+        assert [
+            (entry["status"], entry["item_orders"]) for entry in body["adjustments"]
+        ] == [
+            ("verified", [3]),
+            ("unresolved", [3]),
+            ("verified", [1, 2, 5, 6]),
+            ("assumed", [1, 2, 3, 4, 5, 6]),
+        ]
+        assert {len(entry["allocations"]) for entry in body["adjustments"]} == {0}
+
+    def test_a_mismatch_reports_the_unexplained_difference(self, client, ocr_agent):
+        dropped = scans.vector("sugi_points_line_dropped")
+
+        body = _scan_response(client, ocr_agent, scans.scan(dropped))
+
+        assert body["reconciliation"] == {"status": "mismatch", "difference": -494.0}
+
+
+class TestCorrections:
+    """A person picks the items for each adjustment and the server recalculates."""
+
+    def _review(self, client, ocr_agent, name):
+        return _scan_response(client, ocr_agent, scans.scan(scans.vector(name)))
+
+    def _post(self, client, payload):
+        return client.post(
+            ALLOCATIONS_URL, payload, content_type="application/json", **AUTH
+        )
+
+    def test_choosing_the_items_reconciles_the_receipt(self, client, ocr_agent):
+        body = self._review(
+            client, ocr_agent, "sugi_both_item_discounts_read_under_one_item"
+        )
+        adjustments = body["adjustments"]
+        adjustments[1]["item_orders"] = [4]
+
+        response = self._post(client, _correction(body, adjustments=adjustments))
+
+        assert response.status_code == 200
+        result = response.json()
+        assert [item["cost"] for item in result["receipt_items"]] == [
+            837.0,
+            744.0,
+            1809.0,
+            1533.0,
+            650.0,
+            236.0,
+        ]
+        assert [item["discount"] for item in result["receipt_items"]] == [
+            150.0,
+            133.0,
+            501.0,
+            425.0,
+            117.0,
+            42.0,
+        ]
+        assert result["reconciliation"] == {"status": "reconciled", "difference": 0.0}
+        assert result["total_amount"] == 5809.0
+        assert result["tax_percentage"] == 10.0
+        assert {entry["status"] for entry in result["adjustments"]} == {"verified"}
+        assert result["adjustments"][2]["percentage"] == 8.0
+        assert result["adjustments"][2]["eligible_subtotal"] == 2909.0
+        assert _accepted_by_installed_app(
+            {**body, **result, "receipt_items": result["receipt_items"]}
+        )
+
+    def test_a_scan_posted_back_unchanged_gives_the_same_money(self, client, ocr_agent):
+        body = self._review(client, ocr_agent, "sugi")
+
+        result = self._post(client, _correction(body)).json()
+
+        assert [item["cost"] for item in result["receipt_items"]] == [
+            item["cost"] for item in body["receipt_items"]
+        ]
+        assert result["adjustments"] == [
+            {**entry, "status": "verified"} for entry in body["adjustments"]
+        ]
+
+    def test_tax_printed_without_a_rate_is_spread_again(self, client, ocr_agent):
+        body = self._review(client, ocr_agent, "tax_amount_printed_without_a_rate")
+
+        result = self._post(client, _correction(body)).json()
+
+        assert [item["cost"] for item in result["receipt_items"]] == [
+            22.77,
+            11.33,
+            45.3,
+        ]
+        assert result["reconciliation"]["status"] == "reconciled"
+
+    def test_removing_a_line_that_was_paid_leaves_a_mismatch(self, client, ocr_agent):
+        body = self._review(client, ocr_agent, "sugi")
+
+        result = self._post(
+            client, _correction(body, adjustments=body["adjustments"][:3])
+        ).json()
+
+        assert result["reconciliation"] == {"status": "mismatch", "difference": -494.0}
+        assert [item["cost"] for item in result["receipt_items"]] == [
+            item["list_price"] for item in body["receipt_items"]
+        ]
+        assert {item["discount"] for item in result["receipt_items"]} == {0.0}
+
+    def test_a_coupon_larger_than_its_item_can_be_spread_wider(self, client, ocr_agent):
+        body = self._review(client, ocr_agent, "discount_larger_than_its_item")
+        adjustments = body["adjustments"]
+        adjustments[0]["item_orders"] = [1, 2]
+
+        result = self._post(client, _correction(body, adjustments=adjustments)).json()
+
+        assert [item["cost"] for item in result["receipt_items"]] == [83.0, 415.0]
+
+    @pytest.mark.parametrize(
+        ("change", "message"),
+        [
+            ({"adjustments": [{"item_orders": [9]}]}, "must apply to items"),
+            ({"adjustments": [{"item_orders": []}]}, "must apply to items"),
+            ({"adjustments": [{"item_orders": [1]}]}, "larger than what its items"),
+            ({"adjustments": [{"amount": 0}]}, "must be positive"),
+            ({"receipt_items": [{"list_price": -1}]}, "cannot be negative"),
+            ({"receipt_items": "duplicate"}, "its own item_order"),
+            ({"receipt_items": []}, "at least one item"),
+            ({"total_amount": 0}, "The total must be positive"),
+            ({"decimal_places": 7}, "decimal_places must be between"),
+        ],
+    )
+    def test_a_choice_that_cannot_be_applied_is_rejected(
+        self, client, ocr_agent, change, message
+    ):
+        body = self._review(client, ocr_agent, "discount_larger_than_its_item")
+        payload = _correction(body)
+        if "adjustments" in change:
+            payload["adjustments"] = [
+                {**payload["adjustments"][0], **change["adjustments"][0]}
+            ]
+        elif change.get("receipt_items") == "duplicate":
+            payload["receipt_items"] = [
+                {**item, "item_order": 1} for item in payload["receipt_items"]
+            ]
+        elif change.get("receipt_items") == []:
+            payload["receipt_items"] = []
+        elif "receipt_items" in change:
+            payload["receipt_items"] = [
+                {**payload["receipt_items"][0], **change["receipt_items"][0]},
+                *payload["receipt_items"][1:],
+            ]
+        else:
+            payload.update(change)
+
+        response = self._post(client, payload)
+
+        assert response.status_code == 422
+        assert message in response.json()["detail"]
+
+    def test_corrections_need_the_app_token(self, client):
+        response = client.post(ALLOCATIONS_URL, {}, content_type="application/json")
+
+        assert response.status_code == 401

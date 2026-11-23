@@ -11,7 +11,8 @@ money math, in integer minor units, and never relies on the model's arithmetic.
    its items in proportion to what they cost at that point, by largest
    remainder in the currency's minor unit, ties to the lower item_order.
 3. Reconciliation. The allocated items must add up to the printed amount due,
-   directly or with one printed tax rate added on top, and must agree with the
+   directly, with one printed tax rate added on top, or with a printed tax
+   amount that has no rate (spread over the items), and must agree with the
    printed per-rate taxable bases when those are printed.
 
 A receipt that does not reconcile, or that has an adjustment whose scope cannot
@@ -280,8 +281,19 @@ def split_proportionally(amount: int, weights: Mapping[int, int]) -> dict[int, i
 
 
 def _percent_fits(percentage: Fraction, base: int, amount: int) -> bool:
-    """``amount`` is ``percentage`` of ``base`` under any rounding to one unit."""
+    """``amount`` is ``percentage`` of ``base``, rounded any way (less than a unit off)."""
     return abs(percentage * base - 100 * amount) < 100
+
+
+def _percent_fits_lines(
+    percentage: Fraction, bases: Sequence[int], amount: int
+) -> bool:
+    """``amount`` is ``percentage`` of these lines, rounded on their sum or line by line."""
+    if _percent_fits(percentage, sum(bases), amount):
+        return True
+    low = sum(floor(percentage * base / 100) for base in bases)
+    high = sum(ceil(percentage * base / 100) for base in bases)
+    return low <= amount <= high
 
 
 def _unique_subset(
@@ -332,15 +344,17 @@ def _single_item_fit(
     nets: Mapping[int, int],
     prices: Mapping[int, int],
 ) -> tuple[int, ...] | None:
-    """The one item the percentage fits, on printed prices first, then on nets."""
+    """The one item the percentage fits, on printed prices first, then on nets.
+
+    Two items at the same printed price can both fit; what they cost now (one
+    already discounted, one not) can still tell them apart.
+    """
     for basis in (prices, nets):
         fits = [
             order for order in live if _percent_fits(percentage, basis[order], amount)
         ]
         if len(fits) == 1:
             return (fits[0],)
-        if fits:
-            return None
     return None
 
 
@@ -352,22 +366,34 @@ def _scope_from_percentage(
     unspecific: tuple[int, ...],
     nets: Mapping[int, int],
     prices: Mapping[int, int],
+    item_specific: set[int],
 ) -> tuple[int, ...] | None:
-    single = _single_item_fit(percentage, amount, live, nets, prices)
-    if hint:
-        if _percent_fits(percentage, sum(prices[order] for order in hint), amount):
-            return hint
-        if _percent_fits(percentage, sum(nets[order] for order in hint), amount):
-            # The named item fits only through its discounted price. If another
-            # item fits through its printed price, the receipt is ambiguous.
-            if len(hint) == 1 and single is not None and single != hint:
+    if len(hint) == 1:
+        (named,) = hint
+        on_price = _percent_fits(percentage, prices[named], amount)
+        if on_price or _percent_fits(percentage, nets[named], amount):
+            # The named item is doubtful when another item fits on its printed
+            # price and the named one either fits only after an earlier
+            # deduction or already has a discount of its own: that is the
+            # misread of two item discounts both placed under one item.
+            rivals = [
+                order
+                for order in live
+                if order != named and _percent_fits(percentage, prices[order], amount)
+            ]
+            if rivals and (not on_price or named in item_specific):
                 return None
             return hint
-    if single is not None:
+    elif hint and any(
+        _percent_fits_lines(percentage, [basis[order] for order in hint], amount)
+        for basis in (prices, nets)
+    ):
+        return hint
+    if (single := _single_item_fit(percentage, amount, live, nets, prices)) is not None:
         return single
     for candidate in (live, unspecific):
-        if candidate and _percent_fits(
-            percentage, sum(nets[order] for order in candidate), amount
+        if candidate and _percent_fits_lines(
+            percentage, [nets[order] for order in candidate], amount
         ):
             return candidate
     return None
@@ -388,9 +414,16 @@ def _resolve_scope(
     if adjustment.eligible_subtotal is not None:
         base = adjustment.eligible_subtotal
         scope = _scope_from_base(base, (hint, live, unspecific), live, nets)
-        if adjustment.percentage is not None and not _percent_fits(
-            adjustment.percentage, base, adjustment.amount
+        if (
+            scope
+            and adjustment.percentage is not None
+            and not _percent_fits_lines(
+                adjustment.percentage,
+                [nets[order] for order in scope],
+                adjustment.amount,
+            )
         ):
+            # The base and the percent disagree: one of them was misread.
             scope = None
     elif adjustment.percentage is not None:
         scope = _scope_from_percentage(
@@ -401,6 +434,7 @@ def _resolve_scope(
             unspecific,
             nets,
             prices,
+            item_specific,
         )
     else:
         scope = hint or live
@@ -489,9 +523,12 @@ def allocate(
         if status == "unresolved":
             allocated.append(AllocatedAdjustment(adjustment, status, scope, {}))
             continue
-        allocations = _apply(adjustment, scope, nets)
-        if adjustment.kind == "discount" and len(scope) == 1:
+        live = {order for order, net in nets.items() if net > 0}
+        if adjustment.kind == "discount" and set(scope) < live:
+            # A discount on some of the items (one item, a bundle, a subset):
+            # a later "everything else" line excludes them.
             item_specific.update(scope)
+        allocations = _apply(adjustment, scope, nets)
         allocated.append(AllocatedAdjustment(adjustment, status, scope, allocations))
 
     display_rate = _display_rate(receipt.tax_lines)
@@ -514,6 +551,7 @@ def allocate(
         if adjustment.kind == "points"
     )
     rates = sorted({line.rate for line in receipt.tax_lines if line.rate is not None})
+    unrated_tax = sum(line.tax_amount or 0 for line in receipt.tax_lines)
 
     total: int | None = None
     tax_added = False
@@ -523,6 +561,14 @@ def allocate(
         # One printed rate added on top: the costs stay before tax and the
         # client adds the rate, exactly as it does for such receipts today.
         total, tax_added, display_rate = due, True, rates[0]
+    elif not rates and unrated_tax and subtotal and subtotal + unrated_tax == due:
+        # Tax added on top with no printed rate: no rate for the client to add,
+        # so the printed tax goes into the costs in proportion. With a printed
+        # rate that does not fit, some items are taxed differently and this
+        # would misprice them, so that case stays a mismatch.
+        for order, share in split_proportionally(unrated_tax, nets).items():
+            nets[order] += share
+        total = due
     elif points and subtotal == due - points:
         # The model copied the total printed before the points were taken off.
         total = due - points
@@ -578,3 +624,80 @@ def allocate_scan(scan: ReceiptScan) -> tuple[PrintedReceipt, Allocation]:
     """Convert a transcription and allocate it."""
     receipt = printed_receipt(scan)
     return receipt, allocate(receipt)
+
+
+def corrected_receipt(
+    decimal_places: int,
+    items: Sequence[tuple[int, float]],
+    adjustments: Sequence[
+        tuple[str, AdjustmentKind, float, float | None, float | None]
+    ],
+    tax_lines: Sequence[tuple[float | None, float | None, float | None]],
+    amount_due: float,
+) -> PrintedReceipt:
+    """A receipt a person corrected in the app, for ``allocate(..., scopes=...)``.
+
+    ``items`` are ``(item_order, printed price)``, ``adjustments`` are
+    ``(label, kind, amount, percentage, eligible subtotal)`` and ``tax_lines``
+    are ``(rate, taxable amount, tax amount)``, as the scan response returned
+    them. The percentage and base are kept for display; chosen scopes decide
+    the allocation. Raises ``ValueError`` for anything that cannot be money.
+    """
+    if not items:
+        raise ValueError("A receipt needs at least one item.")
+    orders = [order for order, _ in items]
+    if len(set(orders)) != len(orders):
+        raise ValueError("Each item needs its own item_order.")
+    if any(price < 0 for _, price in items):
+        raise ValueError("Item prices cannot be negative.")
+    if any(adjustment[2] <= 0 for adjustment in adjustments):
+        raise ValueError("Adjustment amounts must be positive.")
+    if amount_due <= 0:
+        raise ValueError("The total must be positive.")
+    places = decimal_places_for(
+        decimal_places,
+        [
+            amount_due,
+            *(price for _, price in items),
+            *(adjustment[2] for adjustment in adjustments),
+            *(adjustment[4] for adjustment in adjustments if adjustment[4] is not None),
+            *(
+                amount
+                for line in tax_lines
+                for amount in line[1:]
+                if amount is not None
+            ),
+        ],
+    )
+
+    def positive_or_none(amount: float | None) -> int | None:
+        if amount is None:
+            return None
+        return abs(to_minor_units(amount, places)) or None
+
+    return PrintedReceipt(
+        items=tuple(
+            Item(item_order=order, price=to_minor_units(price, places))
+            for order, price in items
+        ),
+        adjustments=tuple(
+            Adjustment(
+                label=label,
+                kind=kind,
+                amount=to_minor_units(amount, places),
+                percentage=_percentage(percentage),
+                eligible_subtotal=positive_or_none(base),
+            )
+            for label, kind, amount, percentage, base in adjustments
+        ),
+        tax_lines=tuple(
+            TaxLine(
+                rate=_rate(rate),
+                taxable_amount=positive_or_none(base),
+                tax_amount=positive_or_none(tax),
+            )
+            for rate, base, tax in tax_lines
+        ),
+        amount_due=to_minor_units(amount_due, places),
+        decimal_places=places,
+    )

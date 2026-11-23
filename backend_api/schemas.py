@@ -1,7 +1,10 @@
 from datetime import datetime
+from typing import Literal
 
 from ninja import Schema
 from pydantic import Field, FiniteFloat
+
+AdjustmentKind = Literal["discount", "points", "surcharge"]
 
 
 class SettleUpGroupSchema(Schema):
@@ -63,6 +66,56 @@ class OCRReceiptItemOut(Schema):
             "its share of receipt-wide ones, already subtracted from cost"
         )
     )
+    list_price: float = Field(description="The price printed on the item's own line")
+
+
+class ReceiptAllocationShareOut(Schema):
+    item_order: int
+    amount: float = Field(description="What this item took of the adjustment")
+
+
+class ReceiptAdjustmentOut(Schema):
+    printed_label: str = Field(description="The label as printed, e.g. 全品割引")
+    kind: AdjustmentKind = Field(
+        description="discount and points lower the amount to pay, surcharge raises it"
+    )
+    amount: float = Field(description="The printed amount, always positive")
+    percentage: float | None = Field(description="The printed percent, if any")
+    eligible_subtotal: float | None = Field(
+        description="The printed base amount it was calculated on, if any"
+    )
+    item_orders: list[int] = Field(
+        description="The items it applies to, or the items the receipt names when unresolved"
+    )
+    status: Literal["verified", "assumed", "unresolved"] = Field(
+        description=(
+            "verified: the printed numbers prove which items it covers; assumed: "
+            "taken from the receipt's layout or applied to the whole receipt; "
+            "unresolved: a person must choose its items"
+        )
+    )
+    allocations: list[ReceiptAllocationShareOut] = Field(
+        description="What each item took, when the receipt reconciled; otherwise empty"
+    )
+
+
+class ReceiptTaxLineOut(Schema):
+    rate: float | None
+    taxable_amount: float | None
+    tax_amount: float | None
+
+
+class ReconciliationOut(Schema):
+    status: Literal["reconciled", "needs_review", "mismatch"] = Field(
+        description=(
+            "reconciled: the costs add up to the printed totals; needs_review: an "
+            "adjustment's items must be chosen by a person; mismatch: the printed "
+            "lines do not add up to the amount due"
+        )
+    )
+    difference: float = Field(
+        description="The unexplained difference when the status is mismatch, else 0"
+    )
 
 
 class OCRReceiptPostOut(Schema):
@@ -86,3 +139,59 @@ class OCRReceiptPostOut(Schema):
     )
     receipt_date: datetime = Field(description="The date of the receipt")
     receipt_image_url: str = Field(description="The url of the uploaded receipt image")
+    decimal_places: int = Field(
+        description="Decimal places of the receipt's currency: 0 for yen, 2 for cents"
+    )
+    adjustments: list[ReceiptAdjustmentOut] = Field(
+        description="Every printed line that changed the amount to pay, in printed order"
+    )
+    tax_lines: list[ReceiptTaxLineOut] = Field(description="The printed tax lines")
+    reconciliation: ReconciliationOut
+
+
+# A correction sends back what the scan returned, with the items each
+# adjustment applies to as a person chose them; unknown fields are ignored, so
+# the scan's own objects can be posted back as they are.
+
+
+class ReceiptCorrectionItemIn(Schema):
+    item_order: int
+    list_price: FiniteFloat
+
+
+class ReceiptCorrectionAdjustmentIn(Schema):
+    printed_label: str
+    kind: AdjustmentKind
+    amount: FiniteFloat
+    item_orders: list[int] = Field(description="The items this adjustment applies to")
+    percentage: FiniteFloat | None = Field(default=None)
+    eligible_subtotal: FiniteFloat | None = Field(default=None)
+
+
+class ReceiptCorrectionTaxLineIn(Schema):
+    rate: FiniteFloat | None = Field(default=None)
+    taxable_amount: FiniteFloat | None = Field(default=None)
+    tax_amount: FiniteFloat | None = Field(default=None)
+
+
+class ReceiptCorrectionIn(Schema):
+    decimal_places: int
+    receipt_items: list[ReceiptCorrectionItemIn]
+    adjustments: list[ReceiptCorrectionAdjustmentIn]
+    tax_lines: list[ReceiptCorrectionTaxLineIn] = Field(default_factory=list)
+    total_amount: FiniteFloat = Field(description="The total_amount the scan returned")
+
+
+class ReceiptAllocationItemOut(Schema):
+    item_order: int
+    list_price: float
+    cost: float
+    discount: float
+
+
+class ReceiptAllocationOut(Schema):
+    receipt_items: list[ReceiptAllocationItemOut]
+    adjustments: list[ReceiptAdjustmentOut]
+    reconciliation: ReconciliationOut
+    tax_percentage: float
+    total_amount: float

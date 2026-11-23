@@ -937,5 +937,43 @@
       "difference": -250,
       "scopes": []
     }
+  },
+  {
+    "name": "tax_amount_printed_without_a_rate",
+    "why": "The T-shirt receipt: Tax 10.00 with no rate on a 69.40 subtotal. There is no rate for the app to add, so the tax is spread over the items in proportion (2.87, 1.43, 5.70).",
+    "decimal_places": 2,
+    "items": [19.9, 9.9, 39.6],
+    "adjustments": [],
+    "tax_lines": [[null, null, 10.0]],
+    "amount_due": 79.4,
+    "expected": {
+      "status": "reconciled",
+      "costs": [22.77, 11.33, 45.3],
+      "total": 79.4,
+      "tax_percentage": 0,
+      "tax_added": false,
+      "difference": 0,
+      "scopes": []
+    }
+  },
+  {
+    "name": "printed_tax_rate_that_does_not_fit_the_items",
+    "why": "Archetype E: 8.25% of 20.35 is 1.68, but 1.52 is printed because the bananas are tax-exempt. Spreading the tax over every item would misprice them, so it goes to review.",
+    "decimal_places": 2,
+    "items": [8.99, 12.49, 1.87],
+    "adjustments": [
+      {"label": "STORE CPN", "kind": "discount", "amount": 3.0, "percentage": null, "item_orders": [2], "eligible_subtotal": null}
+    ],
+    "tax_lines": [[8.25, null, 1.52]],
+    "amount_due": 21.87,
+    "expected": {
+      "status": "mismatch",
+      "costs": [8.99, 12.49, 1.87],
+      "total": 21.87,
+      "tax_percentage": 8.25,
+      "tax_added": false,
+      "difference": 1.52,
+      "scopes": [["assumed", [2]]]
+    }
   }
 ]

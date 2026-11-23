@@ -3,12 +3,30 @@ import logging
 from django.http import HttpRequest
 from django.utils import timezone
 from ninja import File, Router, UploadedFile
+from ninja.errors import HttpError
 from pydantic_ai import BinaryContent
 
 from backend_api.dto.receipt_scan import ReceiptScan
 from backend_api.ocr import ScanAttempts, get_openrouter_receipt_agent
-from backend_api.receipt_allocation import allocate_scan, from_minor_units
-from backend_api.schemas import OCRReceiptItemOut, OCRReceiptPostOut
+from backend_api.receipt_allocation import (
+    Allocation,
+    PrintedReceipt,
+    allocate,
+    allocate_scan,
+    corrected_receipt,
+    from_minor_units,
+)
+from backend_api.schemas import (
+    OCRReceiptItemOut,
+    OCRReceiptPostOut,
+    ReceiptAdjustmentOut,
+    ReceiptAllocationItemOut,
+    ReceiptAllocationOut,
+    ReceiptAllocationShareOut,
+    ReceiptCorrectionIn,
+    ReceiptTaxLineOut,
+    ReconciliationOut,
+)
 from backend_api.services import catbox_upload_file, cloudinary_upload_file
 
 logger = logging.getLogger(__name__)
@@ -90,6 +108,127 @@ async def post_ocr_receipt(
     return _receipt_response(scan, url)
 
 
+@router.post("/allocations/", response={200: ReceiptAllocationOut})
+def post_receipt_allocation(
+    request: HttpRequest, payload: ReceiptCorrectionIn
+) -> ReceiptAllocationOut:
+    """Recalculate a scanned receipt with the items a person chose per adjustment.
+
+    No model call and no image: the same allocation as the scan, with each
+    adjustment applied to the items given. A choice that cannot be applied
+    (an unknown item, or a discount larger than its items) is a 422.
+    """
+    try:
+        receipt = corrected_receipt(
+            decimal_places=payload.decimal_places,
+            items=[
+                (item.item_order, item.list_price) for item in payload.receipt_items
+            ],
+            adjustments=[
+                (
+                    adjustment.printed_label,
+                    adjustment.kind,
+                    adjustment.amount,
+                    adjustment.percentage,
+                    adjustment.eligible_subtotal,
+                )
+                for adjustment in payload.adjustments
+            ],
+            tax_lines=[
+                (line.rate, line.taxable_amount, line.tax_amount)
+                for line in payload.tax_lines
+            ],
+            amount_due=payload.total_amount,
+        )
+        allocation = allocate(
+            receipt,
+            scopes=[
+                tuple(adjustment.item_orders) for adjustment in payload.adjustments
+            ],
+        )
+    except ValueError as error:
+        raise HttpError(422, str(error)) from error
+
+    return ReceiptAllocationOut(
+        receipt_items=[
+            ReceiptAllocationItemOut(
+                item_order=item.item_order,
+                list_price=from_minor_units(item.price, receipt.decimal_places),
+                cost=cost,
+                discount=discount,
+            )
+            for item, (cost, discount) in zip(
+                receipt.items, _costs(receipt, allocation), strict=True
+            )
+        ],
+        adjustments=_adjustments(receipt, allocation),
+        reconciliation=_reconciliation(receipt, allocation),
+        tax_percentage=float(allocation.tax_rate or 0),
+        total_amount=from_minor_units(allocation.total, receipt.decimal_places),
+    )
+
+
+def _costs(
+    receipt: PrintedReceipt, allocation: Allocation
+) -> list[tuple[float, float]]:
+    """Each item's (cost, discount): what it cost and everything taken off it."""
+    places = receipt.decimal_places
+    reconciled = allocation.status == "reconciled"
+    result = []
+    for item in receipt.items:
+        cost = allocation.costs[item.item_order]
+        saved = max(item.price - cost, 0) if reconciled else 0
+        result.append((from_minor_units(cost, places), from_minor_units(saved, places)))
+    return result
+
+
+def _adjustments(
+    receipt: PrintedReceipt, allocation: Allocation
+) -> list[ReceiptAdjustmentOut]:
+    places = receipt.decimal_places
+    reconciled = allocation.status == "reconciled"
+    return [
+        ReceiptAdjustmentOut(
+            printed_label=entry.adjustment.label,
+            kind=entry.adjustment.kind,
+            amount=from_minor_units(entry.adjustment.amount, places),
+            percentage=(
+                None
+                if entry.adjustment.percentage is None
+                else float(entry.adjustment.percentage)
+            ),
+            eligible_subtotal=(
+                None
+                if entry.adjustment.eligible_subtotal is None
+                else from_minor_units(entry.adjustment.eligible_subtotal, places)
+            ),
+            item_orders=list(entry.item_orders),
+            status=entry.status,
+            # Shares only mean something once the whole receipt reconciles.
+            allocations=(
+                [
+                    ReceiptAllocationShareOut(
+                        item_order=order, amount=from_minor_units(share, places)
+                    )
+                    for order, share in entry.allocations.items()
+                ]
+                if reconciled
+                else []
+            ),
+        )
+        for entry in allocation.adjustments
+    ]
+
+
+def _reconciliation(
+    receipt: PrintedReceipt, allocation: Allocation
+) -> ReconciliationOut:
+    return ReconciliationOut(
+        status=allocation.status,
+        difference=from_minor_units(allocation.difference, receipt.decimal_places),
+    )
+
+
 def _receipt_response(scan: ReceiptScan, image_url: str) -> OCRReceiptPostOut:
     """Map a transcription and its allocation onto the public scan response.
 
@@ -99,27 +238,44 @@ def _receipt_response(scan: ReceiptScan, image_url: str) -> OCRReceiptPostOut:
     """
     receipt, allocation = allocate_scan(scan)
     places = receipt.decimal_places
-    reconciled = allocation.status == "reconciled"
-    items = []
-    for item, printed in zip(receipt.items, scan.items, strict=True):
-        cost = allocation.costs[item.item_order]
-        saved = item.price - cost if reconciled else 0
-        items.append(
+    return OCRReceiptPostOut(
+        receipt_items=[
             OCRReceiptItemOut(
                 english_name=printed.english_name,
                 japanese_name=printed.japanese_name,
                 item_order=item.item_order,
-                cost=from_minor_units(cost, places),
+                cost=cost,
                 quantity=printed.quantity,
-                discount=from_minor_units(max(saved, 0), places),
+                discount=discount,
+                list_price=from_minor_units(item.price, places),
             )
-        )
-    return OCRReceiptPostOut(
-        receipt_items=items,
+            for item, printed, (cost, discount) in zip(
+                receipt.items, scan.items, _costs(receipt, allocation), strict=True
+            )
+        ],
         en_shop_name=scan.en_shop_name,
         jp_shop_name=scan.jp_shop_name,
         tax_percentage=float(allocation.tax_rate or 0),
         total_amount=from_minor_units(allocation.total, places),
         receipt_date=scan.receipt_date or timezone.now(),
         receipt_image_url=image_url,
+        decimal_places=places,
+        adjustments=_adjustments(receipt, allocation),
+        tax_lines=[
+            ReceiptTaxLineOut(
+                rate=None if line.rate is None else float(line.rate),
+                taxable_amount=(
+                    None
+                    if line.taxable_amount is None
+                    else from_minor_units(line.taxable_amount, places)
+                ),
+                tax_amount=(
+                    None
+                    if line.tax_amount is None
+                    else from_minor_units(line.tax_amount, places)
+                ),
+            )
+            for line in receipt.tax_lines
+        ],
+        reconciliation=_reconciliation(receipt, allocation),
     )

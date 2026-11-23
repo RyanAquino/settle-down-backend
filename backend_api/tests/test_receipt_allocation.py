@@ -65,7 +65,20 @@ class TestGoldenVectors:
             for order, share in entry.allocations.items():
                 moved[order] += sign * share
         prices = {item.item_order: item.price for item in receipt.items}
-        assert result.costs == {order: prices[order] + moved[order] for order in prices}
+        # Beyond the adjustments, a cost only ever carries a share of tax that
+        # was printed without a rate.
+        spread_tax = {
+            order: result.costs[order] - prices[order] - moved[order]
+            for order in prices
+        }
+        if any(line.rate is not None for line in receipt.tax_lines):
+            assert set(spread_tax.values()) == {0}
+        else:
+            assert all(share >= 0 for share in spread_tax.values())
+            assert sum(spread_tax.values()) in (
+                0,
+                sum(line.tax_amount or 0 for line in receipt.tax_lines),
+            )
         assert all(cost >= 0 for cost in result.costs.values())
         if not result.tax_added:
             assert sum(result.costs.values()) == result.total
