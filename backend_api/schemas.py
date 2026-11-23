@@ -4,7 +4,7 @@ from django.utils import timezone
 from ninja import Schema
 from pydantic import Field, FiniteFloat
 
-from backend_api.dto.receipt_item import ReceiptAdjustment, ReceiptItemData
+from backend_api.dto.receipt_item import ReceiptItemData
 
 
 class SettleUpGroupSchema(Schema):
@@ -42,7 +42,6 @@ class TransactionPostIn(Schema):
 
 
 class OCRReceiptPostOut(Schema):
-    receipt_adjustments: list[ReceiptAdjustment] = Field(default_factory=list)
     receipt_items: list[ReceiptItemData]
     en_shop_name: str = Field(
         ..., description="The name of the shop in the receipt in english"
@@ -54,8 +53,7 @@ class OCRReceiptPostOut(Schema):
         default=0, description="The tax percentage of the receipt if applicable"
     )
     total_amount: float = Field(
-        default=0,
-        description="Final amount paid after all discounts and redeemed points",
+        default=0, description="The total amount of all items in the receipt"
     )
     receipt_date: datetime = Field(
         default_factory=timezone.now, description="The date of the receipt"

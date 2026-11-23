@@ -7,7 +7,6 @@ the OCR agent and image hosts (patched per test).
 """
 
 import logging
-from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -192,15 +191,12 @@ def ocr_agent():
         yield agent
 
 
-def _upload(content_type="image/jpeg"):
-    return SimpleUploadedFile("receipt.jpg", b"image-bytes", content_type=content_type)
+def _upload():
+    return SimpleUploadedFile("receipt.jpg", b"jpeg-bytes", content_type="image/jpeg")
 
 
 class TestReceiptEndpoint:
-    @pytest.mark.parametrize("media_type", ["image/jpeg", "image/png"])
-    def test_extracts_receipt_and_hosts_image_on_cloudinary(
-        self, client, ocr_agent, media_type
-    ):
+    def test_extracts_receipt_and_hosts_image_on_cloudinary(self, client, ocr_agent):
         with (
             patch(
                 "backend_api.api.cloudinary_upload_file",
@@ -208,13 +204,12 @@ class TestReceiptEndpoint:
             ),
             patch("backend_api.api.catbox_upload_file") as catbox,
         ):
-            response = client.post(RECEIPT_URL, {"file": _upload(media_type)}, **AUTH)
+            response = client.post(RECEIPT_URL, {"file": _upload()}, **AUTH)
 
         assert response.status_code == 200
         data = response.json()
         assert data["receipt_image_url"] == "https://res.cloudinary.com/r.jpg"
         assert data["en_shop_name"] == "Sample Mart"
-        assert data["receipt_adjustments"] == []
         assert data["total_amount"] == 330
         assert [item["english_name"] for item in data["receipt_items"]] == ["Onigiri"]
         catbox.assert_not_called()
@@ -222,45 +217,7 @@ class TestReceiptEndpoint:
         # The image bytes reach the model as binary content.
         prompt = ocr_agent.run.await_args.args[0]
         images = [part for part in prompt if isinstance(part, BinaryContent)]
-        assert [image.data for image in images] == [b"image-bytes"]
-        assert [image.media_type for image in images] == [media_type]
-
-    def test_sugi_receipt_keeps_both_deductions_separate_from_line_prices(
-        self, client, ocr_agent
-    ):
-        fixture = Path(__file__).parent / "fixtures" / "sugi-receipt.json"
-        receipt = ReceiptData.model_validate_json(fixture.read_bytes())
-        ocr_agent.run.return_value = SimpleNamespace(output=receipt)
-        with patch(
-            "backend_api.api.cloudinary_upload_file",
-            return_value="https://example.test/scan",
-        ):
-            response = client.post(RECEIPT_URL, {"file": _upload()}, **AUTH)
-
-        assert response.status_code == 200
-        data = response.json()
-        assert [(i["cost"], i["discount"]) for i in data["receipt_items"]] == [
-            (987, 0),
-            (877, 0),
-            (1963, 347),
-            (1664, 294),
-            (767, 0),
-            (278, 0),
-        ]
-        coupon, points = data["receipt_adjustments"]
-        assert coupon == {
-            "kind": "discount",
-            "amount": 233,
-            "item_orders": [1, 2, 5, 6],
-        }
-        assert points == {"kind": "points_redemption", "amount": 494, "item_orders": []}
-        assert (
-            sum(i["cost"] for i in data["receipt_items"])
-            - coupon["amount"]
-            - points["amount"]
-            == data["total_amount"]
-            == 5809
-        )
+        assert [image.data for image in images] == [b"jpeg-bytes"]
 
     def test_falls_back_to_catbox_when_cloudinary_fails(
         self, client, ocr_agent, caplog

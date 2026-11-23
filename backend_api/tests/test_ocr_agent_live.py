@@ -19,15 +19,10 @@ Run it explicitly with::
 """
 
 import asyncio
-import json
 import os
 from pathlib import Path
-from types import SimpleNamespace
-from unittest.mock import patch
 
 import pytest
-from django.core.files.uploadedfile import SimpleUploadedFile
-from django.test import override_settings
 from pydantic_ai import BinaryContent
 
 from backend_api.dto.receipt_item import ReceiptData
@@ -84,52 +79,3 @@ def test_openrouter_live_extracts_valid_receipt():
     assert isinstance(data, ReceiptData)
     assert data.total_amount > 0
     assert data.receipt_items, "expected at least one extracted line item"
-
-
-@pytest.mark.live
-@pytest.mark.skipif(
-    not os.getenv("OPENROUTER_API_KEY") or not os.getenv("LIVE_SUGI_RECEIPT_IMAGE"),
-    reason="set OPENROUTER_API_KEY and LIVE_SUGI_RECEIPT_IMAGE for the Sugi regression",
-)
-@override_settings(APP_AUTH="sugi-live-test")
-def test_sugi_photo_extracts_the_printed_payment_and_coupon_scope(client):
-    """Run the real upload and OCR with a local photo; image hosting stays mocked."""
-    path = Path(os.environ["LIVE_SUGI_RECEIPT_IMAGE"])
-    upload = SimpleUploadedFile(
-        path.name, path.read_bytes(), _MEDIA_TYPES[path.suffix.lower()]
-    )
-    expected = json.loads((_FIXTURE_DIR / "sugi-receipt.json").read_text())
-
-    async def local_translation(text, **kwargs):
-        return SimpleNamespace(text=text)
-
-    with (
-        patch(
-            "backend_api.api.cloudinary_upload_file",
-            return_value="https://example.test/sugi",
-        ),
-        patch("backend_api.ocr.Translator") as translator,
-    ):
-        translator.return_value.translate = local_translation
-        response = client.post(
-            "/api/v1/receipts/receipt-items/",
-            {"file": upload},
-            HTTP_AUTHORIZATION="Bearer sugi-live-test",
-        )
-    assert response.status_code == 200
-    data = response.json()
-    lines = sorted(data["receipt_items"], key=lambda i: i["item_order"])
-    assert [(i["cost"], i["discount"]) for i in lines] == [
-        (i["cost"], i["discount"]) for i in expected["receipt_items"]
-    ]
-    assert len(data["receipt_adjustments"]) == 2
-    coupon, points = sorted(data["receipt_adjustments"], key=lambda a: a["kind"])
-    assert coupon["kind"] == "discount"
-    assert coupon["amount"] == 233
-    assert set(coupon["item_orders"]) == {lines[i]["item_order"] for i in (0, 1, 4, 5)}
-    assert points == {"kind": "points_redemption", "amount": 494, "item_orders": []}
-    assert (
-        sum(i["cost"] for i in lines) - coupon["amount"] - points["amount"]
-        == data["total_amount"]
-        == 5809
-    )
