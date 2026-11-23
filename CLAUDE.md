@@ -80,7 +80,7 @@ Understand both before touching anything financial:
 ### Constraints baked into the current model (don't assume otherwise)
 
 - Tax is a single scalar applied **all-or-nothing**; mixed rates (e.g. JP 8% food vs 10%) are not representable.
-- `total_amount` is **trusted input**, never validated; the OCR prompt merely asks the LLM to make items sum to it.
+- `total_amount` is the printed amount payable after receipt-wide discounts and points. The scanner reports those adjustments separately from line prices. The mobile app reconciles them before submission.
 - The float-`==` tax heuristic means a one-unit rounding drift can silently flip the entire tax decision.
   Be careful changing any rounding or the comparison.
 - Transactions are filed in the group's currency, but there is **no FX conversion**: a receipt denominated differently from its group is recorded unconverted.

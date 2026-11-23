@@ -190,10 +190,11 @@ Extract receipt items from an uploaded image using OCR via AI.
 | Field | Type | Description |
 | --- | --- | --- |
 | `receipt_items` | `list[ReceiptItemData]` | List of receipt items (each with `english_name: str`, `japanese_name: str`, `item_order: int`, `cost: float`, `quantity: int`, `discount: int`) |
+| `receipt_adjustments` | `list[ReceiptAdjustment]` | Basket discounts and redeemed points. Each entry has a `kind` (`discount` or `points_redemption`), a positive monetary `amount`, and eligible `item_orders` (empty means all items). Line prices already include item discounts and exclude these deductions. |
 | `en_shop_name` | `str` | Shop name in English |
 | `jp_shop_name` | `str` | Shop name in Japanese |
 | `tax_percentage` | `float` | Tax percentage |
-| `total_amount` | `float` | Total receipt amount |
+| `total_amount` | `float` | Final amount paid after discounts and redeemed points |
 | `receipt_date` | `datetime` | Receipt date |
 | `receipt_image_url` | `str` | URL of the uploaded receipt image |
 
@@ -220,6 +221,7 @@ curl -X POST "http://localhost:8000/api/v1/receipts/receipt-items/" \
   "en_shop_name": "Sample Mart",
   "jp_shop_name": "サンプルマート",
   "tax_percentage": 10.0,
+  "receipt_adjustments": [],
   "total_amount": 330.0,
   "receipt_date": "2026-05-30T12:34:56",
   "receipt_image_url": "https://res.cloudinary.com/example/image/upload/receipt.jpg"
@@ -353,7 +355,7 @@ The suite is strict on purpose:
 
 - **Warnings are errors** (`filterwarnings = ["error"]`), so a deprecation fails the PR that introduces it instead of the upgrade that removes the API.
 - **HTTP tests go through the real stack**: `test_http_api.py` uses Django's test `Client`, so requests traverse the URL conf, middleware and bearer auth.
-- **Live tests are opt-in.** Tests marked `live` call paid APIs and are deselected by default; run them with `uv run pytest -m live` (see `test_ocr_agent_live.py` for the keys and receipt image they need).
+- **Live tests are opt-in.** Tests marked `live` call paid APIs and are deselected by default; run them with `uv run pytest -m live` (see `test_ocr_agent_live.py` for the keys and receipt image they need). Set `LIVE_SUGI_RECEIPT_IMAGE` to a private local copy of the six-item Sugi receipt to check both deductions and the ¥5,809 payment through the upload endpoint.
 
 ### API contract snapshot
 

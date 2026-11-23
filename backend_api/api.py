@@ -24,7 +24,12 @@ async def post_ocr_receipt(
             """
             here is the image receipt:
             """,
-            BinaryContent(data=file.read(), media_type="image/jpg"),
+            BinaryContent(
+                data=file.read(),
+                media_type=(
+                    "image/png" if file.content_type == "image/png" else "image/jpeg"
+                ),
+            ),
         ]
     )
     results = result.output
