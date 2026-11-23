@@ -13,19 +13,22 @@ from backend_api.dto.scanned_receipt import ScannedReceipt, ScannedReceiptAdjust
 
 
 def _unique_eligible_items(
-    items: list[ReceiptItemData], eligible_subtotal: float
+    items: list[ReceiptItemData], eligible_subtotal: float, prior_savings: Decimal
 ) -> list[int]:
     """Recover missing coupon scope only when the printed base has exactly one match."""
     target = Decimal(str(eligible_subtotal))
+    # An earlier coupon may bring a different, originally dearer subset down
+    # to the same base. Only infer when that possibility can be ruled out.
+    upper = target + prior_savings
     # A bit per purchased line identifies a subset; None records multiple matches.
     subsets: dict[Decimal, int | None] = {Decimal(0): 0}
     for index, item in enumerate(items):
         cost = Decimal(str(item.cost))
-        if cost <= 0 or cost > target:
+        if cost <= 0 or cost > upper:
             continue
         for subtotal, mask in list(subsets.items()):
             value = subtotal + cost
-            if value <= target:
+            if value <= upper:
                 subsets[value] = (
                     None if value in subsets or mask is None else mask | (1 << index)
                 )
@@ -33,12 +36,16 @@ def _unique_eligible_items(
         # receipts with many distinct decimal sums; an uncertain scope stays empty.
         if subsets.get(target, 0) is None or len(subsets) > 8192:
             return []
+    if any(target < subtotal <= upper for subtotal in subsets):
+        return []
     match = subsets.get(target) or 0
     return [item.item_order for i, item in enumerate(items) if match & (1 << i)]
 
 
 def _split_deduction(
-    adjustment: ScannedReceiptAdjustment, items: list[ReceiptItemData]
+    adjustment: ScannedReceiptAdjustment,
+    items: list[ReceiptItemData],
+    prior_savings: Decimal,
 ) -> SplitDeduction:
     orders = adjustment.item_orders
     if adjustment.eligible_subtotal is not None:
@@ -46,8 +53,11 @@ def _split_deduction(
         base = sum(
             Decimal(str(item.cost)) for item in items if item.item_order in marked
         )
-        if base != Decimal(str(adjustment.eligible_subtotal)):
-            orders = _unique_eligible_items(items, adjustment.eligible_subtotal)
+        target = Decimal(str(adjustment.eligible_subtotal))
+        if not target <= base <= target + prior_savings:
+            orders = _unique_eligible_items(
+                items, adjustment.eligible_subtotal, prior_savings
+            )
     scope: DeductionScope
     if orders:
         scope = "items"
@@ -68,9 +78,11 @@ def normalize_receipt(scan: ScannedReceipt) -> tuple[ReceiptData, ReceiptSplitRu
     """Preserve item prices and printed order within each stage of the split."""
     discounts: list[SplitDeduction] = []
     points: list[SplitDeduction] = []
+    prior_savings = Decimal(0)
     for adjustment in scan.receipt_adjustments:
         rules = discounts if adjustment.kind == "discount" else points
-        rules.append(_split_deduction(adjustment, scan.receipt_items))
+        rules.append(_split_deduction(adjustment, scan.receipt_items, prior_savings))
+        prior_savings += Decimal(str(adjustment.amount))
     receipt = ReceiptData(
         **scan.model_dump(exclude={"receipt_adjustments"}),
         receipt_discount=float(sum(Decimal(str(rule.amount)) for rule in discounts)),

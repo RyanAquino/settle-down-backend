@@ -105,3 +105,19 @@ def test_an_unrestricted_coupon_retains_its_label_and_amount(scan):
     assert receipt.receipt_discount == 250
     assert rules.discounts[0].scope == "basket"
     assert rules.discounts[0].printed_label == "Store coupon"
+
+
+def test_later_coupon_base_can_match_an_item_after_an_earlier_coupon(scan):
+    scan.receipt_items = [
+        scan.receipt_items[0].model_copy(update={"cost": cost, "item_order": number})
+        for number, cost in enumerate([100, 90], 1)
+    ]
+    first = ScannedReceiptAdjustment(kind="discount", amount=10, item_orders=[1])
+    second = ScannedReceiptAdjustment(kind="discount", amount=5, eligible_subtotal=90)
+    scan.receipt_adjustments = [first, second]
+    _, rules = normalize_receipt(scan)
+    assert rules.discounts[1].scope == "needs_review"
+    second.item_orders = [1]
+    _, rules = normalize_receipt(scan)
+    assert rules.discounts[1].item_orders == [1]
+    assert rules.discounts[1].scope == "items"
