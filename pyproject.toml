@@ -130,7 +130,12 @@ enable_error_code = ["ignore-without-code", "redundant-expr", "truthy-bool"]
 # The money math and the Settle Up client are fully typed: every function must
 # be annotated, so the types document what flows into a financial calculation.
 [[tool.mypy.overrides]]
-module = ["backend_api.utils", "backend_api.settleup_utils", "backend_api.firebase_auth"]
+module = [
+    "backend_api.utils",
+    "backend_api.receipt_allocation",
+    "backend_api.settleup_utils",
+    "backend_api.firebase_auth",
+]
 disallow_untyped_defs = true
 disallow_incomplete_defs = true
 disallow_any_generics = true
@@ -161,14 +166,14 @@ layers = [
     "backend_api.api | backend_api.settleup_api",
     "backend_api.settleup_utils | backend_api.ocr | backend_api.services",
     "backend_api.schemas",
-    "backend_api.utils | backend_api.firebase_auth",
+    "backend_api.utils | backend_api.receipt_allocation | backend_api.firebase_auth",
     "backend_api.dto",
 ]
 
 [[tool.importlinter.contracts]]
 name = "Money math is pure: no web framework, HTTP, cache or SDK imports"
 type = "forbidden"
-source_modules = ["backend_api.utils"]
+source_modules = ["backend_api.utils", "backend_api.receipt_allocation"]
 forbidden_modules = [
     "django",
     "ninja",
