@@ -17,13 +17,13 @@ Including another URLconf
 
 from django.conf import settings
 from django.conf.urls.static import static
-from django.contrib import admin
 from django.urls import URLPattern, URLResolver, path
 
 from settledown.api import api
 
+# No Django admin: it has no models to manage and no tables to run on, and it
+# answered anyone, without the API's bearer token.
 urlpatterns: list[URLPattern | URLResolver] = [
-    path("admin/", admin.site.urls),
     path("api/", api.urls),
 ]
 

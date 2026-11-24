@@ -111,7 +111,7 @@ uv sync --no-dev
 uv run pre-commit install
 ```
 
-> Django migrations are optional — the app has no database models (each app's `models.py` is empty and there are no application migrations). Only Django's built-in apps would migrate. Run the following only if you need Django admin or built-in tables:
+> Django migrations are optional - the app has no database models (each app's `models.py` is empty and there are no application migrations). Only Django's built-in apps would migrate. Run the following only if you need Django's built-in tables:
 >
 > ```bash
 > uv run python manage.py migrate
@@ -513,7 +513,7 @@ settledown/
 
 - **No application database:** each app's `models.py` is empty; all state is external (Firebase, Redis, client).
 - **No Django ORM models:** transactions are created only via the Firebase REST API.
-- **No models are registered with the Django admin** (the app has no models).
+- **No Django admin:** the app has no models to manage, and the admin answered requests without the API's bearer token.
 - **Tax is all-or-nothing on transactions:** it is computed only if `member_taxes + member_items + shared_tax == total_amount` (float equality).
 - **Scans with a deduction after tax do not reconcile**, nor do tax-on-top receipts at several rates whose printed bases do not identify each rate's items, nor receipts with a surcharge outside the tax base (such as a US gratuity with a printed tax rate); the app asks for review.
 - **No FX conversion:** transactions are filed in the group's currency and receipt amounts are assumed to match it; a receipt in a different currency than its group is recorded unconverted.
