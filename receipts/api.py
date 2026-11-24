@@ -2,6 +2,8 @@ from django.http import HttpRequest
 from ninja import File, Router, UploadedFile
 from ninja.errors import HttpError
 
+from receipts.image_hosting import upload_receipt_image
+from receipts.ocr import read_receipt
 from receipts.schemas import (
     OCRReceiptPostOut,
     ReceiptAllocationOut,
@@ -10,7 +12,7 @@ from receipts.schemas import (
 from receipts.services import (
     ReceiptCorrectionError,
     recalculate_receipt,
-    scan_receipt,
+    scan_response,
 )
 
 router = Router(tags=["receipts"])
@@ -20,7 +22,9 @@ router = Router(tags=["receipts"])
 async def post_ocr_receipt(
     request: HttpRequest, file: File[UploadedFile]
 ) -> OCRReceiptPostOut:
-    return await scan_receipt(file)
+    scan = await read_receipt(file.read())
+    image_url = upload_receipt_image(file)
+    return scan_response(scan, image_url)
 
 
 @router.post("/allocations/", response={200: ReceiptAllocationOut})

@@ -166,9 +166,9 @@ name = "The receipts and Settle Up apps are independent"
 type = "independence"
 modules = ["receipts", "settle_up"]
 
-# In each app, routes call services, and services call the integrations and the
-# pure logic below them. A layer may only import layers below it, and siblings
-# separated by | may not import each other.
+# In each app, the routes sit on top and the pure logic at the bottom. A layer
+# may only import layers below it, and siblings separated by | may not import
+# each other.
 [[tool.importlinter.contracts]]
 name = "Receipts: routes > services > integrations > pure logic"
 type = "layers"

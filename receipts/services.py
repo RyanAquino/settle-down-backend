@@ -1,15 +1,12 @@
-"""What the receipts routes do: scan a receipt photo, or recalculate a correction.
+"""Receipt scans and corrections as API responses.
 
-A scan is read by the OCR model (``receipts.ocr``), its photo is hosted
-(``receipts.image_hosting``), and the transcription, or a person's corrections,
-runs through the pure allocation in ``receipts.allocation``. The result is
-mapped onto the public schemas: ``cost`` is what each line cost after every
-adjustment. A receipt that does not reconcile allocates nothing: every cost is
-0 and the review step reads ``list_price``.
+A transcription, or a person's corrections, runs through the pure allocation in
+``receipts.allocation`` and is mapped onto the public schemas: ``cost`` is what
+each line cost after every adjustment. A receipt that does not reconcile
+allocates nothing: every cost is 0 and the review step reads ``list_price``.
 """
 
 from django.utils import timezone
-from ninja import UploadedFile
 
 from receipts.allocation import (
     Allocation,
@@ -19,8 +16,6 @@ from receipts.allocation import (
     corrected_receipt,
     from_minor_units,
 )
-from receipts.image_hosting import upload_receipt_image
-from receipts.ocr import read_receipt
 from receipts.schemas import (
     OCRReceiptItemOut,
     OCRReceiptPostOut,
@@ -39,12 +34,6 @@ class ReceiptCorrectionError(Exception):
     """A person's choice of items cannot be applied to the receipt."""
 
 
-async def scan_receipt(file: UploadedFile) -> OCRReceiptPostOut:
-    """Read a receipt photo, host it, and say what each line cost."""
-    scan = await read_receipt(file.read())
-    return _scan_response(scan, upload_receipt_image(file))
-
-
 def recalculate_receipt(payload: ReceiptCorrectionIn) -> ReceiptAllocationOut:
     """Recalculate a scanned receipt with the items a person chose per adjustment.
 
@@ -59,7 +48,7 @@ def recalculate_receipt(payload: ReceiptCorrectionIn) -> ReceiptAllocationOut:
     return _allocation_response(receipt, allocation)
 
 
-def _scan_response(scan: ReceiptScan, image_url: str) -> OCRReceiptPostOut:
+def scan_response(scan: ReceiptScan, image_url: str) -> OCRReceiptPostOut:
     """Map a transcription and its allocation onto the public scan response.
 
     ``cost`` is what each line cost after every adjustment, so the items add

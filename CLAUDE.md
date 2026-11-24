@@ -47,10 +47,10 @@ The running app **does** require Redis (`django_redis` cache backend) and the en
 
 Request entry is `settledown/api.py`: one `NinjaAPI` protected by `GlobalAuth`, an `HttpBearer` that compares the token to `settings.APP_AUTH` in constant time and rejects everything when `APP_AUTH` is unset.
 The layout follows the Django Ninja docs: the project package `settledown/` only wires the apps together, importing each app's router and mounting it (`api.add_router("/v1/receipts/", receipts_router)`).
-Each app (`receipts/`, `settle_up/`) keeps its routes on a tagged `Router` in `api.py`, its schemas in `schemas.py`, and what the routes do in `services.py`.
-Routes only call services and map their errors to HTTP; everything else lives below the services, and the two apps never import each other or the project package.
+Each app (`receipts/`, `settle_up/`) keeps its routes on a tagged `Router` in `api.py`, its schemas in `schemas.py`, and its services in `services.py`.
+Routes stay thin: they call the functions below them and map their errors to HTTP, with no logic of their own; the two apps never import each other or the project package.
 
-- `/api/v1/receipts/receipt-items/` (`receipts/api.py`) is **the OCR flow**, run by `services.scan_receipt()`.
+- `/api/v1/receipts/receipt-items/` (`receipts/api.py`) is **the OCR flow**: the route reads the photo with `ocr.read_receipt()`, hosts it with `image_hosting.upload_receipt_image()` and returns `services.scan_response()`.
   `ocr.read_receipt()` runs an async `pydantic-ai` `Agent` from `get_openrouter_receipt_agent()` (OpenRouter, model `settings.OPENROUTER_MODEL`), which reads the uploaded image with a strict `ToolOutput(ReceiptScan)` (`receipts/transcription.py`).
   The image's media type comes from its bytes (`ocr.image_media_type`), because uploads are phone photos whose declared type is often generic.
   The model only **transcribes**: printed item prices, every printed line that changes the amount to pay (discounts, coupons, points, surcharges, each with its printed amount, percent, base and the items it names), the tax lines and the amount due.
