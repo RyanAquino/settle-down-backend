@@ -602,9 +602,10 @@ def _prices_include_tax(
     points paid after tax leave the bases unchanged. With complete lines, a
     base that includes its tax means the prices do; a base before tax means the
     prices include tax when they add up to the bases plus the tax, and exclude
-    it when they add up to the bases alone. Without bases, one rate's tax is
-    read against the items themselves, and several rates' tax that no price
-    could hold inside it means the tax was added on top.
+    it when they add up to the bases alone, and says nothing when they do both
+    (points equal to the tax). Without bases, one rate's tax is read against
+    the items themselves, and several rates' tax that no price could hold
+    inside it means the tax was added on top.
     """
     if complete is not None:
         forms = {
@@ -619,10 +620,10 @@ def _prices_include_tax(
         if forms == {"on top"}:
             bases = sum(line.taxable_amount or 0 for line in complete)
             tax = sum(line.tax_amount or 0 for line in complete)
-            if bases + tax in subtotals:
-                return True
-            if bases in subtotals:
-                return False
+            including, excluding = bases + tax in subtotals, bases in subtotals
+            # Only a reading the subtotals single out says anything.
+            if including != excluding:
+                return including
         return None
     taxed = [line for line in tax_lines if line.rate and line.tax_amount is not None]
     if not taxed or any(line.taxable_amount is not None for line in taxed):
@@ -659,6 +660,10 @@ def _reading(
     - spread: tax printed with no rate, to be spread into the costs;
     - spread by rate: tax at printed rates, each into the items its base names;
     - before points: the amount due was read before points were taken off.
+
+    "before points" repairs a misread amount due, so it is never taken when
+    tax added on top explains the amount due as read: points equal to that
+    tax fit both, and nothing printed tells them apart.
     """
     complete = _complete_tax_lines(tax_lines)
     includes_tax = _prices_include_tax(
@@ -667,6 +672,12 @@ def _reading(
     rates = sorted({line.rate for line in tax_lines if line.rate})
     rated_tax = sum(line.tax_amount or 0 for line in tax_lines if line.rate is not None)
     unrated_tax = sum(line.tax_amount or 0 for line in tax_lines)
+    before_points = bool(
+        points
+        and includes_tax is not False
+        and subtotal == due - points
+        and due - points > 0
+    )
     if subtotal == due and includes_tax is not False:
         return "included"
     if (
@@ -681,7 +692,7 @@ def _reading(
         ]
         # A printed tax amount must be what was added, to the unit.
         if not printed or due - subtotal == sum(printed):
-            return "added"
+            return None if before_points else "added"
     if (
         not any(line.rate is not None for line in tax_lines)
         and unrated_tax
@@ -691,12 +702,7 @@ def _reading(
         return "spread"
     if includes_tax is False and complete is not None and subtotal + rated_tax == due:
         return "spread by rate"
-    if (
-        points
-        and includes_tax is not False
-        and subtotal == due - points
-        and due - points > 0
-    ):
+    if before_points and (includes_tax is True or due - subtotal != rated_tax):
         return "before points"
     return None
 

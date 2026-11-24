@@ -1697,5 +1697,45 @@
       "difference": 0,
       "scopes": [["unresolved", []]]
     }
+  },
+  {
+    "name": "points_before_tax_equal_to_the_tax_on_a_tax_exclusive_receipt",
+    "why": "1,100 on a tax-exclusive receipt, 100 of points taken off before tax and 10% added on the 1,000 left: 1,100 paid. A tax-inclusive receipt whose 100 of points were paid after tax, read with the total before them as the amount due, prints the same lines and was paid 1,000. Points equal to the tax leave nothing to tell the two apart, so neither is taken.",
+    "decimal_places": 0,
+    "items": [1100],
+    "adjustments": [
+      {"label": "ポイント値引", "kind": "points", "amount": 100, "percentage": null, "item_orders": [], "eligible_subtotal": null}
+    ],
+    "tax_lines": [[10, 1000, 100]],
+    "amount_due": 1100,
+    "expected": {
+      "status": "mismatch",
+      "costs": [0],
+      "total": 1100,
+      "tax_percentage": 10,
+      "tax_added": false,
+      "difference": 100,
+      "scopes": [["verified", [1]]]
+    }
+  },
+  {
+    "name": "points_equal_to_the_tax_added_at_two_rates",
+    "why": "164 of points taken off before tax, then 8% and 10% added on top of the 918 left on each item (73 and 91), with no bases printed: 2,000 paid. Tax added on top at two rates explains the amount due as read, so it is not taken as a total read before the points; two rates on top go to review.",
+    "decimal_places": 0,
+    "items": [1000, 1000],
+    "adjustments": [
+      {"label": "ポイント値引", "kind": "points", "amount": 164, "percentage": null, "item_orders": [], "eligible_subtotal": null}
+    ],
+    "tax_lines": [[8, null, 73], [10, null, 91]],
+    "amount_due": 2000,
+    "expected": {
+      "status": "mismatch",
+      "costs": [0, 0],
+      "total": 2000,
+      "tax_percentage": 0,
+      "tax_added": false,
+      "difference": 164,
+      "scopes": [["assumed", [1, 2]]]
+    }
   }
 ]
