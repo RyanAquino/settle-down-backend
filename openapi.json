@@ -8,7 +8,7 @@
   "paths": {
     "/api/v1/receipts/receipt-items/": {
       "post": {
-        "operationId": "backend_api_api_post_ocr_receipt",
+        "operationId": "receipts_api_post_ocr_receipt",
         "summary": "Post Ocr Receipt",
         "parameters": [],
         "responses": {
@@ -23,6 +23,9 @@
             }
           }
         },
+        "tags": [
+          "receipts"
+        ],
         "requestBody": {
           "content": {
             "multipart/form-data": {
@@ -53,7 +56,7 @@
     },
     "/api/v1/receipts/allocations/": {
       "post": {
-        "operationId": "backend_api_api_post_receipt_allocation",
+        "operationId": "receipts_api_post_receipt_allocation",
         "summary": "Post Receipt Allocation",
         "parameters": [],
         "responses": {
@@ -69,6 +72,9 @@
           }
         },
         "description": "Recalculate a scanned receipt with the items a person chose per adjustment.\n\nNo model call and no image: the same allocation as the scan, with each\nadjustment applied to the items given. A choice that cannot be applied\n(an unknown item, or a discount larger than its items) is a 422.",
+        "tags": [
+          "receipts"
+        ],
         "requestBody": {
           "content": {
             "application/json": {
@@ -88,7 +94,7 @@
     },
     "/api/v1/settle-up/groups/": {
       "get": {
-        "operationId": "backend_api_settleup_api_get_settle_up_groups",
+        "operationId": "settle_up_api_get_settle_up_groups",
         "summary": "Get Settle Up Groups",
         "parameters": [
           {
@@ -126,6 +132,9 @@
             }
           }
         },
+        "tags": [
+          "settle-up"
+        ],
         "security": [
           {
             "GlobalAuth": []
@@ -135,7 +144,7 @@
     },
     "/api/v1/settle-up/users/": {
       "get": {
-        "operationId": "backend_api_settleup_api_get_settle_up_users",
+        "operationId": "settle_up_api_get_settle_up_users",
         "summary": "Get Settle Up Users",
         "parameters": [
           {
@@ -182,6 +191,9 @@
             }
           }
         },
+        "tags": [
+          "settle-up"
+        ],
         "security": [
           {
             "GlobalAuth": []
@@ -191,7 +203,7 @@
     },
     "/api/v1/settle-up/transactions/": {
       "post": {
-        "operationId": "backend_api_settleup_api_post_settle_up_create_transaction",
+        "operationId": "settle_up_api_post_settle_up_create_transaction",
         "summary": "Post Settle Up Create Transaction",
         "parameters": [],
         "responses": {
@@ -199,6 +211,9 @@
             "description": "No Content"
           }
         },
+        "tags": [
+          "settle-up"
+        ],
         "requestBody": {
           "content": {
             "application/json": {

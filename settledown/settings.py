@@ -53,7 +53,8 @@ INSTALLED_APPS = [
     "django.contrib.messages",
     "django.contrib.staticfiles",
     "corsheaders",
-    "backend_api",
+    "receipts",
+    "settle_up",
 ]
 
 MIDDLEWARE = [

@@ -47,7 +47,7 @@ dev = [
 [tool.pytest.ini_options]
 DJANGO_SETTINGS_MODULE = "settledown.settings"
 python_files = ["test_*.py"]
-testpaths = ["backend_api/tests"]
+testpaths = ["receipts/tests", "settle_up/tests", "settledown/tests"]
 # `live` tests hit real paid APIs: opt in with `-m live` (a later -m overrides
 # this one). --strict-* turns typos in markers/config into errors.
 addopts = ["-m", "not live", "--strict-markers", "--strict-config", "-ra"]
@@ -62,7 +62,7 @@ filterwarnings = [
 
 # -------------------------------------------------------------- coverage ----
 [tool.coverage.run]
-source = ["backend_api", "settledown"]
+source = ["receipts", "settle_up", "settledown"]
 branch = true
 omit = ["*/tests/*", "*/migrations/*"]
 
@@ -108,10 +108,10 @@ allowed-confusables = ["１", "２", "３"]
 
 [tool.ruff.lint.per-file-ignores]
 # assert is how pytest asserts; fixtures use fake credentials.
-"backend_api/tests/**" = ["S101", "S105", "S106"]
+"*/tests/**" = ["S101", "S105", "S106"]
 
 [tool.ruff.lint.isort]
-known-first-party = ["backend_api", "settledown"]
+known-first-party = ["receipts", "settle_up", "settledown"]
 
 [tool.ruff.lint.flake8-tidy-imports]
 ban-relative-imports = "all"
@@ -132,10 +132,10 @@ enable_error_code = ["ignore-without-code", "redundant-expr", "truthy-bool"]
 # be annotated, so the types document what flows into a financial calculation.
 [[tool.mypy.overrides]]
 module = [
-    "backend_api.utils",
-    "backend_api.receipt_allocation",
-    "backend_api.settleup_utils",
-    "backend_api.firebase_auth",
+    "receipts.allocation",
+    "settle_up.splitting",
+    "settle_up.services",
+    "settle_up.firebase_auth",
 ]
 disallow_untyped_defs = true
 disallow_incomplete_defs = true
@@ -155,26 +155,53 @@ init_typed = true
 
 # --------------------------------------------------------- import-linter ----
 [tool.importlinter]
-root_packages = ["backend_api", "settledown"]
+root_packages = ["receipts", "settle_up", "settledown"]
 include_external_packages = true
 
+# The project package only wires the apps together (as the Django Ninja docs lay
+# a project out), so an app never imports it.
 [[tool.importlinter.contracts]]
-name = "Layered architecture: each layer only imports the layers below it"
+name = "The project package wires the apps; the apps never import it"
+type = "forbidden"
+source_modules = ["receipts", "settle_up"]
+forbidden_modules = ["settledown"]
+
+[[tool.importlinter.contracts]]
+name = "The receipts and Settle Up apps are independent"
+type = "independence"
+modules = ["receipts", "settle_up"]
+
+# In each app, routes call services, and services call the integrations and the
+# pure logic below them. A layer may only import layers below it, and siblings
+# separated by | may not import each other.
+[[tool.importlinter.contracts]]
+name = "Receipts: routes > services > integrations > pure logic"
 type = "layers"
+containers = ["receipts"]
 layers = [
-    "settledown.urls",
-    "settledown.api",
-    "backend_api.api | backend_api.settleup_api",
-    "backend_api.settleup_utils | backend_api.ocr | backend_api.services | backend_api.receipt_responses",
-    "backend_api.schemas",
-    "backend_api.utils | backend_api.receipt_allocation | backend_api.firebase_auth",
-    "backend_api.dto",
+    "api",
+    "services",
+    "ocr | image_hosting | schemas",
+    "allocation | llm7",
+    "transcription",
+]
+
+[[tool.importlinter.contracts]]
+name = "Settle Up: routes > services > pure logic"
+type = "layers"
+containers = ["settle_up"]
+layers = [
+    "api",
+    "services",
+    "schemas",
+    "splitting | firebase_auth",
+    "dto",
 ]
 
 [[tool.importlinter.contracts]]
 name = "Money math is pure: no web framework, HTTP, cache or SDK imports"
 type = "forbidden"
-source_modules = ["backend_api.utils", "backend_api.receipt_allocation"]
+source_modules = ["receipts.allocation", "settle_up.splitting"]
 forbidden_modules = [
     "django",
     "ninja",
@@ -187,7 +214,7 @@ forbidden_modules = [
 
 # ---------------------------------------------------------------- deptry ----
 [tool.deptry]
-known_first_party = ["backend_api", "settledown"]
+known_first_party = ["receipts", "settle_up", "settledown"]
 # Test modules may import dev-only packages (pytest).
 extend_exclude = [".*/tests/"]
 

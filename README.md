@@ -57,7 +57,7 @@ settledown exposes a [Django Ninja](https://django-ninja.dev/) API under the `/a
 3. The agent receives a system prompt plus the image, and **transcribes** the receipt: printed item prices, every printed line that changes the amount to pay (discounts, coupons, points, surcharges, each with its printed amount, percent, base amount and the items it names), the tax lines and the amount due.
    It never subtracts a discount or computes a total.
 4. The agent calls a `translate_jp_to_en_text` tool as needed for English names.
-5. `backend_api/receipt_allocation.py` does the money math in integer minor units.
+5. `receipts/allocation.py` does the money math in integer minor units.
    It resolves which items each line applies to from the printed numbers (a printed base amount or percentage), applies the lines in printed order by largest remainder, and reconciles the result against the printed amount due and tax lines.
 6. The output validator asks the model to read again only when a transcription cannot be read as money, and at most once more when it does not add up; the run returns the best attempt, not the last.
 7. The receipt image is uploaded to Cloudinary; on failure, it is uploaded to catbox.moe.
@@ -67,7 +67,7 @@ settledown exposes a [Django Ninja](https://django-ninja.dev/) API under the `/a
 ### Flow 2 — Transaction Creation
 
 1. The client `POST`s the OCR results and member allocations to `POST /api/v1/settle-up/transactions/`.
-2. `SettleUpClient` signs in through the Firebase Auth REST API (`backend_api/firebase_auth.py`); the token is cached ~58 min in Redis.
+2. `SettleUpClient` signs in through the Firebase Auth REST API (`settle_up/firebase_auth.py`); the token is cached ~58 min in Redis.
 3. Per-member itemized costs are aggregated from the `user_receipt_items` list.
 4. Tax is added per member **only if** validation passes: `sum(member taxes + member items + shared taxes) == total_amount` (float equality — all-or-nothing).
 5. Shared items are split evenly across all group members (fetched from the Settle Up cache).
@@ -111,7 +111,7 @@ uv sync --no-dev
 uv run pre-commit install
 ```
 
-> Django migrations are optional — the app has no database models (`backend_api/models.py` is empty and there are no application migrations). Only Django's built-in apps would migrate. Run the following only if you need Django admin or built-in tables:
+> Django migrations are optional — the app has no database models (each app's `models.py` is empty and there are no application migrations). Only Django's built-in apps would migrate. Run the following only if you need Django admin or built-in tables:
 >
 > ```bash
 > uv run python manage.py migrate
@@ -399,13 +399,13 @@ uv run pytest
 uv run pytest --cov
 
 # Run a single test module
-uv run pytest backend_api/tests/test_transaction.py
+uv run pytest settle_up/tests/test_transaction.py
 ```
 
 The suite is strict on purpose:
 
 - **Warnings are errors** (`filterwarnings = ["error"]`), so a deprecation fails the PR that introduces it instead of the upgrade that removes the API.
-- **HTTP tests go through the real stack**: `test_http_api.py` uses Django's test `Client`, so requests traverse the URL conf, middleware and bearer auth.
+- **HTTP tests go through the real stack**: each app's `tests/test_api.py` (and `settledown/tests/test_auth.py`) uses Django's test `Client`, so requests traverse the URL conf, middleware and bearer auth.
 - **Live tests are opt-in.** Tests marked `live` call paid APIs and are deselected by default; run them with `uv run pytest -m live` (see `test_ocr_agent_live.py` for the keys and receipt image they need).
 
 ### API contract snapshot
@@ -414,7 +414,7 @@ The suite is strict on purpose:
 After an intentional API change, regenerate it and review the diff:
 
 ```bash
-UPDATE_OPENAPI_SNAPSHOT=1 uv run pytest backend_api/tests/test_openapi_schema.py
+UPDATE_OPENAPI_SNAPSHOT=1 uv run pytest settledown/tests/test_openapi_schema.py
 ```
 
 ### Code quality checks
@@ -423,12 +423,12 @@ UPDATE_OPENAPI_SNAPSHOT=1 uv run pytest backend_api/tests/test_openapi_schema.py
 uv run black .              # format
 uv run ruff check --fix .   # lint, including security (bandit) and Django rules
 uv run mypy .               # type check with the django-stubs and pydantic plugins
-uv run lint-imports         # architecture contracts (layers; money math stays pure)
+uv run lint-imports         # architecture contracts (app layers and independence; money math stays pure)
 uv run deptry .             # every import is a declared dependency, and vice versa
 ```
 
 The rule sets and contracts live in `pyproject.toml`.
-The import contracts encode the layering `settledown` (composition root) > routers > integrations (`settleup_utils`, `ocr`, `services`) > `schemas` > domain math (`utils`) > `dto`, and forbid `backend_api.utils` from importing Django, ninja, HTTP clients or SDKs.
+The import contracts keep the two apps independent of each other and of the `settledown` project package, layer each app as routes > services > integrations > pure logic, and forbid the money math (`receipts.allocation`, `settle_up.splitting`) from importing Django, ninja, HTTP clients or SDKs.
 
 ### Pre-commit hooks
 
@@ -471,35 +471,39 @@ settledown/
 ├── Dockerfile
 ├── docker-compose.yml
 ├── .github/workflows/           # ci.yml, security.yml, nightly.yml
-├── settledown/                 # Django project
-│   ├── api.py                  # NinjaAPI instance, GlobalAuth, router registration
+├── settledown/                 # Django project: wiring only
+│   ├── api.py                  # NinjaAPI, GlobalAuth, mounts each app's router by dotted path
 │   ├── settings.py             # Settings (env vars, Redis cache, APP_AUTH)
 │   ├── urls.py                 # /api/ -> NinjaAPI
-│   └── asgi.py                 # ASGI entrypoint (settledown.asgi:application)
-└── backend_api/
-    ├── api.py                  # Receipts router (routes only): POST /receipt-items/, POST /allocations/
-    ├── settleup_api.py         # Settle-up router: groups, users, transactions
-    ├── settleup_utils.py       # SettleUpClient: Settle Up REST calls, caching, transaction build
-    ├── firebase_auth.py        # Firebase Auth REST sign-in
-    ├── utils.py                # Pure receipt-splitting math (tax inference, weights)
-    ├── ocr.py                  # Pydantic AI receipt agents (OpenRouter, OpenAI/LLM7), scan_receipt
-    ├── receipt_allocation.py   # Pure receipt money math: discount scope, allocation, reconciliation
-    ├── receipt_responses.py    # Scans and corrections as API responses
+│   ├── asgi.py                 # ASGI entrypoint (settledown.asgi:application)
+│   └── tests/                  # Bearer auth, OpenAPI snapshot, entrypoints
+├── receipts/                   # App: /api/v1/receipts/
+│   ├── api.py                  # Router (routes only): POST /receipt-items/, POST /allocations/
+│   ├── schemas.py              # Request/response schemas
+│   ├── services.py             # What the routes do: scan_receipt, recalculate_receipt
+│   ├── ocr.py                  # Pydantic AI receipt agents (OpenRouter, OpenAI/LLM7), read_receipt
+│   ├── image_hosting.py        # Photo hosting: Cloudinary, falling back to catbox.moe
+│   ├── allocation.py           # Pure receipt money math: discount scope, allocation, reconciliation
+│   ├── transcription.py        # ReceiptScan: what the OCR model transcribes
+│   ├── llm7.py                 # LLM7ChatModel - LLM response parsing workaround
+│   ├── models.py               # Empty - no application ORM models
+│   └── tests/                  # Golden vectors, agent loop, routes over HTTP
+└── settle_up/                  # App: /api/v1/settle-up/
+    ├── api.py                  # Router (routes only): groups, users, transactions
     ├── schemas.py              # Request/response schemas
-    ├── services.py             # Image upload: Cloudinary, falling back to catbox.moe
-    ├── dto/                    # Data structures
-    │   ├── receipt_scan.py     # ReceiptScan: what the OCR model transcribes
-    │   ├── settleup.py         # Settle Up data structures
-    │   └── llm7_override.py    # LLM7ChatModel - LLM response parsing workaround
+    ├── services.py             # SettleUpClient: Settle Up REST calls, caching, transaction build
+    ├── firebase_auth.py        # Firebase Auth REST sign-in
+    ├── splitting.py            # Pure transaction-splitting math (tax inference, weights)
+    ├── dto.py                  # Settle Up data structures
     ├── models.py               # Empty - no application ORM models
     └── tests/
-        ├── conftest.py         # Fixtures with mocked external boundaries
+        ├── conftest.py         # SettleUpClient with its external boundaries mocked
         └── test_*.py
 ```
 
 ## Notes & Limitations
 
-- **No application database:** `models.py` is empty; all state is external (Firebase, Redis, client).
+- **No application database:** each app's `models.py` is empty; all state is external (Firebase, Redis, client).
 - **No Django ORM models:** transactions are created only via the Firebase REST API.
 - **No models are registered with the Django admin** (the app has no models).
 - **Tax is all-or-nothing on transactions:** it is computed only if `member_taxes + member_items + shared_tax == total_amount` (float equality).
