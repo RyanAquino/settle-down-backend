@@ -336,22 +336,24 @@ class _Budget:
         return self.steps >= 0
 
 
-def _unique_subset(
+def _subsets_reaching(
     orders: Sequence[int], weights: Mapping[int, int], target: int, budget: _Budget
-) -> tuple[int, ...] | None:
-    """The one subset of ``orders`` whose weights sum to ``target``, if exactly one.
+) -> tuple[int, tuple[int, ...] | None]:
+    """How many subsets of ``orders`` have weights summing to ``target``.
 
-    Weights must be positive. Gives up (None) when the budget runs out.
+    The count is capped at 2, which also stands for a search that gave up when
+    the budget ran out; with exactly one subset, it comes along. Weights must
+    be positive.
     """
     if sum(weights[order] for order in orders) < target:
-        return None
+        return 0, None
     # Number of subsets reaching each sum (capped at 2), and how each sum was
     # first reached: the sum before it and the position of the item added.
     counts: dict[int, int] = {0: 1}
     first: dict[int, tuple[int, int]] = {}
     for position, order in enumerate(orders):
         if not budget.spend(len(counts)):
-            return None
+            return 2, None
         weight = weights[order]
         for subtotal, count in list(counts.items()):
             reached = subtotal + weight
@@ -361,8 +363,9 @@ def _unique_subset(
             if not seen:
                 first[reached] = (subtotal, position)
             counts[reached] = min(2, seen + count)
-    if counts.get(target) != 1:
-        return None
+    found = counts.get(target, 0)
+    if found != 1:
+        return found, None
     # With exactly one subset, the first way each sum on its path was reached
     # is that subset.
     chosen: set[int] = set()
@@ -370,7 +373,47 @@ def _unique_subset(
     while reached:
         reached, position = first[reached]
         chosen.add(position)
-    return tuple(order for position, order in enumerate(orders) if position in chosen)
+    return 1, tuple(
+        order for position, order in enumerate(orders) if position in chosen
+    )
+
+
+def _unique_subset(
+    orders: Sequence[int], weights: Mapping[int, int], target: int, budget: _Budget
+) -> tuple[int, ...] | None:
+    """The one subset of ``orders`` whose weights sum to ``target``, if exactly one.
+
+    Weights must be positive. Gives up (None) when the budget runs out.
+    """
+    return _subsets_reaching(orders, weights, target, budget)[1]
+
+
+def _nearest_subset(
+    orders: Sequence[int],
+    weights: Mapping[int, int],
+    target: int,
+    tolerance: int,
+    budget: _Budget,
+) -> tuple[int, ...] | None:
+    """The one subset whose weights come nearest ``target``, within ``tolerance``.
+
+    Distances are tried nearest first, both sides together. At the first one
+    some subset reaches, exactly one must: several mean the target does not
+    single out the items, whatever a farther distance would find. None then,
+    when no subset comes within ``tolerance``, or when the budget runs out.
+    """
+    for distance in range(tolerance + 1):
+        found = [
+            _subsets_reaching(orders, weights, near, budget)
+            for near in {target - distance, target + distance}
+            if near > 0
+        ]
+        count = sum(reaching for reaching, _ in found)
+        if count == 1:
+            return next(subset for _, subset in found if subset is not None)
+        if count > 1:
+            return None
+    return None
 
 
 def _reachable_sums(weights: Iterable[int], limit: int) -> int:
@@ -715,29 +758,17 @@ def _tax_by_items(
     The items of every rate but the largest are the one set whose costs add up
     to that rate's printed base; the largest rate takes the rest, which must add
     up to its base too. A store may round each rate's share of a deduction
-    separately, so a base is matched within ``tolerance``, nearest first.
-    ``lines`` are the complete tax lines. None when the bases do not single out
-    the items.
+    separately, so a base is matched within ``tolerance``, nearest first: two
+    sets of items at the nearest distance leave it unknown, even if a farther
+    one is unique. ``lines`` are the complete tax lines. None when the bases do
+    not single out the items.
     """
     lines = sorted(lines, key=lambda line: line.taxable_amount or 0)
     remaining = tuple(order for order, net in nets.items() if net > 0)
     taxed: list[tuple[int, tuple[int, ...]]] = []
     for line in lines[:-1]:
-        base = line.taxable_amount or 0
-        targets = [base] + [
-            target
-            for distance in range(1, tolerance + 1)
-            for target in (base - distance, base + distance)
-        ]
-        items = next(
-            (
-                found
-                for target in targets
-                if target > 0
-                and (found := _unique_subset(remaining, nets, target, budget))
-                is not None
-            ),
-            None,
+        items = _nearest_subset(
+            remaining, nets, line.taxable_amount or 0, tolerance, budget
         )
         if items is None:
             return None

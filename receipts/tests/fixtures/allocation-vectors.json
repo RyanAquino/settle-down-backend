@@ -1737,5 +1737,43 @@
       "difference": 164,
       "scopes": [["assumed", [1, 2]]]
     }
+  },
+  {
+    "name": "per_rate_base_reached_by_two_items_after_a_coupon",
+    "why": "Tax added on top at 8% and 10% after a 300 coupon over the whole receipt, which leaves the items at 1,000, 1,000 and 999. The 8% base of 1,000 is the first item or the second, so its items are not known; that the third item alone comes within the one unit of rounding the coupon allows must not decide it.",
+    "decimal_places": 0,
+    "items": [1100, 1100, 1099],
+    "adjustments": [
+      {"label": "クーポン", "kind": "discount", "amount": 300, "percentage": null, "item_orders": [], "eligible_subtotal": null}
+    ],
+    "tax_lines": [[8, 1000, 80], [10, 1999, 199]],
+    "amount_due": 3278,
+    "expected": {
+      "status": "mismatch",
+      "costs": [0, 0, 0],
+      "total": 3278,
+      "tax_percentage": 10,
+      "tax_added": false,
+      "difference": 279,
+      "scopes": [["assumed", [1, 2, 3]]]
+    }
+  },
+  {
+    "name": "per_rate_base_no_items_add_up_to",
+    "why": "Tax added on top at 8% (12 on 150) and 10% (45 on 450): the bases add up to the items, but no set of items makes the 8% base of 150, so a base or a price was misread.",
+    "decimal_places": 0,
+    "items": [100, 200, 300],
+    "adjustments": [],
+    "tax_lines": [[8, 150, 12], [10, 450, 45]],
+    "amount_due": 657,
+    "expected": {
+      "status": "mismatch",
+      "costs": [0, 0, 0],
+      "total": 657,
+      "tax_percentage": 10,
+      "tax_added": false,
+      "difference": 57,
+      "scopes": []
+    }
   }
 ]
