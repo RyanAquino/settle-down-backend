@@ -472,7 +472,7 @@ settledown/
 ├── docker-compose.yml
 ├── .github/workflows/           # ci.yml, security.yml, nightly.yml
 ├── settledown/                 # Django project: wiring only
-│   ├── api.py                  # NinjaAPI, GlobalAuth, mounts each app's router by dotted path
+│   ├── api.py                  # NinjaAPI, GlobalAuth, mounts each app's router
 │   ├── settings.py             # Settings (env vars, Redis cache, APP_AUTH)
 │   ├── urls.py                 # /api/ -> NinjaAPI
 │   ├── asgi.py                 # ASGI entrypoint (settledown.asgi:application)

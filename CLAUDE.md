@@ -46,7 +46,7 @@ The running app **does** require Redis (`django_redis` cache backend) and the en
 ## Architecture
 
 Request entry is `settledown/api.py`: one `NinjaAPI` protected by `GlobalAuth`, an `HttpBearer` that compares the token to `settings.APP_AUTH` in constant time and rejects everything when `APP_AUTH` is unset.
-The layout follows the Django Ninja docs: the project package `settledown/` only wires the apps together, mounting each app's router by dotted path (`api.add_router("/v1/receipts/", "receipts.api.router")`).
+The layout follows the Django Ninja docs: the project package `settledown/` only wires the apps together, importing each app's router and mounting it (`api.add_router("/v1/receipts/", receipts_router)`).
 Each app (`receipts/`, `settle_up/`) keeps its routes on a tagged `Router` in `api.py`, its schemas in `schemas.py`, and what the routes do in `services.py`.
 Routes only call services and map their errors to HTTP; everything else lives below the services, and the two apps never import each other or the project package.
 
