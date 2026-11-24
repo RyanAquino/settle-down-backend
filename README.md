@@ -70,7 +70,7 @@ settledown exposes a [Django Ninja](https://django-ninja.dev/) API under the `/a
 2. `SettleUpClient` signs in through the Firebase Auth REST API (`settle_up/firebase_auth.py`); the token is cached ~58 min in Redis.
 3. Per-member itemized costs are aggregated from the `user_receipt_items` list.
 4. Tax is added per member **only if** validation passes: `sum(member taxes + member items + shared taxes) == total_amount` (float equality — all-or-nothing).
-5. Shared items are split evenly across all group members (fetched from the Settle Up cache).
+5. Shared items are split evenly across the group's active members (fetched from the Settle Up cache); a member Settle Up marks inactive is left out, as it is from the member list.
 6. Integer weights are computed via GCD reduction on the final per-member totals.
 7. A single-item transaction is `POST`ed to Settle Up. `whoPaid` contains the full `total_amount` as the payer's weight, while `forWhom` contains the GCD-reduced per-member weights; `currencyCode` is the group's own currency, with an identity `exchangeRates` entry.
 8. Settle Up returns the transaction ID.
@@ -519,7 +519,7 @@ settledown/
 - **No FX conversion:** transactions are filed in the group's currency and receipt amounts are assumed to match it; a receipt in a different currency than its group is recorded unconverted.
 - **The transaction endpoint trusts `total_amount`:** the scan endpoint reconciles every scan against the printed totals, but a transaction posted directly is not checked.
 - **Settle Up metadata is cached ~24h** (~86,500s): group/member info may be stale until the cache expires.
-- **Shared items are split evenly** across all members; there are no per-member overrides.
+- **Shared items are split evenly** across all active members; there are no per-member overrides.
 - **A receipt image is required for a transaction** (the URL field is optional, but the OCR flow always provides it).
 - **LLM errors raise `ModelRetry`;** translation failures retry with shorter text chunks.
 

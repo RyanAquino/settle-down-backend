@@ -121,7 +121,14 @@ class SettleUpClient:
         return group
 
     def get_group_members_by_group(self, group_id: str) -> list[SettleUpMember]:
-        cache_key = f"{group_id}_settle_up_users"
+        """The members a new transaction can name: payers, item owners, sharers.
+
+        Settle Up keeps a member who left the group, marked ``active: false``,
+        which it documents as not to be included in new transactions; a member
+        without the flag is active.
+        """
+        # v2: entries cached under the old key still list deactivated members.
+        cache_key = f"{group_id}_settle_up_users_v2"
 
         cached: list[SettleUpMember] | None = cache.get(cache_key)
         if cached:
@@ -133,6 +140,8 @@ class SettleUpClient:
         result: list[SettleUpMember] = []
 
         for member_id, metadata in members.items():
+            if metadata.get("active", True) is False:
+                continue
             name = metadata.get("name")
             result.append(
                 {

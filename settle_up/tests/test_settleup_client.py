@@ -80,11 +80,41 @@ class TestReadCaching:
     def test_members(self, settle_up_client, mock_settleup):
         members = [{"id": "m", "name": "Cached"}]
         mock_settleup.cache.get.side_effect = _cache_hit_for(
-            "_settle_up_users", members
+            "_settle_up_users_v2", members
         )
 
         assert settle_up_client.get_group_members_by_group("group-1") == members
         mock_settleup.requests.get.assert_not_called()
+
+
+class TestDeactivatedMembers:
+    """Settle Up keeps a member who left as ``active: false``: out of new transactions."""
+
+    @pytest.fixture(autouse=True)
+    def _members(self, mock_settleup):
+        mock_settleup.requests.get.return_value.json.return_value = {
+            "Member 1": {"name": "Member 1", "active": True},
+            # Older data carries no flag: the member is active.
+            "Member 2": {"name": "Member 2"},
+            "Member 3": {"name": "Member 3", "active": False},
+        }
+
+    def test_the_roster_leaves_them_out(self, settle_up_client):
+        assert settle_up_client.get_group_members_by_group("group-1") == [
+            {"id": "Member 1", "name": "Member 1"},
+            {"id": "Member 2", "name": "Member 2"},
+        ]
+
+    def test_a_shared_item_is_split_over_active_members_only(self, settle_up_client):
+        result = settle_up_client._compute_transaction(
+            receipt_items=[],
+            tax_percentage=10,
+            group_id="group-1",
+            total_amount=3000,
+            split_receipt_items=[3000],
+        )
+
+        assert result == {"Member 1": 1500.0, "Member 2": 1500.0}
 
 
 class TestMissingGroup:
