@@ -68,7 +68,7 @@ def test_openrouter_live_transcribes_a_receipt_that_can_be_allocated():
         return await agent.run(
             [
                 "here is the image receipt:",
-                BinaryContent(data=data, media_type=image_media_type(data, None)),
+                BinaryContent(data=data, media_type=image_media_type(data)),
             ],
             deps=ScanAttempts(),
         )

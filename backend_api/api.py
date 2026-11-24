@@ -33,32 +33,24 @@ logger = logging.getLogger(__name__)
 
 router = Router()
 
-# ISO base media file brands that mark a HEIC/HEIF still image (bytes 8-12).
-_HEIC_BRANDS = {b"heic", b"heix", b"hevc", b"hevx", b"heim", b"heis"}
-_HEIF_BRANDS = {b"mif1", b"msf1", b"heif"}
+# Brands a phone writes in a HEIC photo's "ftyp" box (bytes 8-12).
+_HEIC_BRANDS = {b"heic", b"heix", b"hevc", b"hevx", b"heim", b"heis", b"mif1", b"msf1"}
 
 
-def image_media_type(data: bytes, declared: str | None) -> str:
-    """The media type of an uploaded receipt photo, read from its leading bytes.
+def image_media_type(data: bytes) -> str:
+    """The media type of a receipt photo, read from its first bytes.
 
-    The bytes are authoritative: the declared multipart type depends on the
-    client and is often missing or generic. An unrecognised file falls back to
-    the declared type when it names an image, else to JPEG, so the model still
-    receives every upload as an image, as it did before types were detected.
+    Uploads are phone photos: JPEG from either camera, PNG screenshots, WebP
+    from some Android galleries, or HEIC from iPhone and Android HEIF photos.
+    The bytes decide, because the type a phone declares is often generic.
+    Anything else is sent as JPEG, as every upload was before.
     """
-    if data.startswith(b"\xff\xd8\xff"):
-        return "image/jpeg"
     if data.startswith(b"\x89PNG\r\n\x1a\n"):
         return "image/png"
     if data[:4] == b"RIFF" and data[8:12] == b"WEBP":
         return "image/webp"
-    if data[4:8] == b"ftyp":
-        if data[8:12] in _HEIC_BRANDS:
-            return "image/heic"
-        if data[8:12] in _HEIF_BRANDS:
-            return "image/heif"
-    if declared and declared.startswith("image/"):
-        return declared
+    if data[4:8] == b"ftyp" and data[8:12] in _HEIC_BRANDS:
+        return "image/heic"
     return "image/jpeg"
 
 
@@ -76,9 +68,7 @@ async def post_ocr_receipt(
                 """
                 here is the image receipt:
                 """,
-                BinaryContent(
-                    data=data, media_type=image_media_type(data, file.content_type)
-                ),
+                BinaryContent(data=data, media_type=image_media_type(data)),
             ],
             deps=attempts,
         )
