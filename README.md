@@ -323,7 +323,7 @@ Retrieve the users in a specific settle-up group.
 
 | Parameter | Type | Description |
 | --- | --- | --- |
-| `group_id` | `str` | ID of the group |
+| `group_id` | `str` | ID of the group (a Settle Up group key; one containing `.`, `/`, `#`, `$`, `[`, `]`, `?`, `%` or a control character is refused with `422`, since it would change the Firebase path) |
 
 **Response** (`200`): a list of users, each with:
 
@@ -362,7 +362,7 @@ Create a new settlement transaction. Transactions are filed in **the group's cur
 | `total_amount` | `float` | Finite total transaction amount |
 | `user_receipt_items` | `list[UserTransactionSchema]` | Receipt items per user (each with `member_id: str`, `cost: float`, finite and not negative) |
 | `split_receipt_items` | `list[float]` | Optional split items, finite and not negative (defaults to an empty list) |
-| `group_id` | `str` | Group ID |
+| `group_id` | `str` | Group ID (a Settle Up group key; one containing `.`, `/`, `#`, `$`, `[`, `]`, `?`, `%` or a control character is refused with `422`, since it would change the Firebase path) |
 | `receipt_date` | `datetime \| None` | Optional receipt date; an offset is honoured and a date without one is read as UTC (defaults to now) |
 | `receipt_image_url` | `str \| None` | Optional receipt image URL |
 

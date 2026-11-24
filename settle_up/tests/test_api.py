@@ -27,6 +27,20 @@ LUNCH = {
     "group_id": "group-1",
 }
 
+# A group id goes into the Firebase REST path: these would point the
+# service account's reads and writes at another node, add a query, or
+# cut the path.
+STEERING_IDS = (
+    "../userGroups/test-local-id",
+    "group-1/x",
+    "group-1.json?print=pretty",
+    "group-1#",
+    "G%31",
+    "group$1",
+    "group[1]",
+    "",
+)
+
 
 @pytest.fixture(autouse=True)
 def _app_token():
@@ -64,6 +78,37 @@ class TestSettleUpEndpoints:
         response = client.get(USERS_URL, **AUTH)
 
         assert response.status_code == 422
+
+    def test_a_group_id_may_be_a_push_id(self, client, mock_settleup):
+        response = client.get(USERS_URL, {"group_id": "-Nx_9aZ"}, **AUTH)
+
+        assert response.status_code == 200
+        (url,) = mock_settleup.requests.get.call_args.args
+        assert url.endswith("/members/-Nx_9aZ.json")
+
+    @pytest.mark.parametrize("group_id", STEERING_IDS)
+    def test_list_users_refuses_a_group_id_that_changes_the_path(
+        self, client, mock_settleup, group_id
+    ):
+        response = client.get(USERS_URL, {"group_id": group_id}, **AUTH)
+
+        assert response.status_code == 422
+        mock_settleup.requests.get.assert_not_called()
+
+    @pytest.mark.parametrize("group_id", STEERING_IDS)
+    def test_create_transaction_refuses_a_group_id_that_changes_the_path(
+        self, client, mock_settleup, group_id
+    ):
+        response = client.post(
+            TRANSACTIONS_URL,
+            {**LUNCH, "tax_percentage": 10, "total_amount": 3, "group_id": group_id},
+            content_type="application/json",
+            **AUTH,
+        )
+
+        assert response.status_code == 422
+        assert response.json()["detail"][0]["loc"][-1] == "group_id"
+        mock_settleup.requests.post.assert_not_called()
 
     @pytest.mark.parametrize(
         ("tax_percentage", "total", "weights"),

@@ -16,6 +16,16 @@ class SettleUpUserSchema(Schema):
     id: str
 
 
+# A Settle Up group id is a Firebase key, and it goes into Firebase REST paths
+# (groups/<id>.json, members/<id>.json, transactions/<id>.json). A character
+# Firebase forbids in keys, or one a URL treats specially (".." segments,
+# "?", "#", "%" escapes), could point the service account's reads and writes
+# at another node, so neither is accepted.
+GroupId = Annotated[
+    str,
+    Field(min_length=1, max_length=768, pattern=r"^[^./#$\[\]?%\x00-\x1f\x7f]+$"),
+]
+
 # What a member owes for a line: a finite amount, never negative.
 Cost = Annotated[FiniteFloat, Field(ge=0)]
 
@@ -34,7 +44,7 @@ class TransactionPostIn(Schema):
     split_receipt_items: list[Cost] = Field(
         default_factory=list, description="Split receipt items"
     )
-    group_id: str
+    group_id: GroupId
     receipt_date: datetime | None = Field(
         default=None,
         description=(

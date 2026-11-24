@@ -152,6 +152,9 @@
             "in": "query",
             "name": "group_id",
             "schema": {
+              "maxLength": 768,
+              "minLength": 1,
+              "pattern": "^[^./#$\\[\\]?%\\x00-\\x1f\\x7f]+$",
               "title": "Group Id",
               "type": "string"
             },
@@ -913,6 +916,9 @@
             "type": "array"
           },
           "group_id": {
+            "maxLength": 768,
+            "minLength": 1,
+            "pattern": "^[^./#$\\[\\]?%\\x00-\\x1f\\x7f]+$",
             "title": "Group Id",
             "type": "string"
           },

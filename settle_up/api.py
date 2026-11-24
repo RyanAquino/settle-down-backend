@@ -5,6 +5,7 @@ from ninja.pagination import paginate
 
 from settle_up.dto import SettleUpGroup, SettleUpMember
 from settle_up.schemas import (
+    GroupId,
     SettleUpGroupSchema,
     SettleUpUserSchema,
     TransactionPostIn,
@@ -24,7 +25,9 @@ def get_settle_up_groups(request: HttpRequest) -> list[SettleUpGroup]:
 
 @router.get("/users/", response={200: list[SettleUpUserSchema]})
 @paginate
-def get_settle_up_users(request: HttpRequest, group_id: str) -> list[SettleUpMember]:
+def get_settle_up_users(
+    request: HttpRequest, group_id: GroupId
+) -> list[SettleUpMember]:
     settle_up_client = SettleUpClient()
     return settle_up_client.get_group_members_by_group(group_id)
 
