@@ -69,7 +69,7 @@ settledown exposes a [Django Ninja](https://django-ninja.dev/) API under the `/a
 1. The client `POST`s the OCR results and member allocations to `POST /api/v1/settle-up/transactions/`.
 2. `SettleUpClient` signs in through the Firebase Auth REST API (`settle_up/firebase_auth.py`); the token is cached ~58 min in Redis.
 3. Per-member itemized costs are aggregated from the `user_receipt_items` list.
-4. Tax is added per member **only if** validation passes: `sum(member taxes + member items + shared taxes) == total_amount` (float equality — all-or-nothing).
+4. Tax is added per member **only if** validation passes: `member items + member taxes + shared items + shared taxes == total_amount` (float equality, all-or-nothing).
 5. Shared items are split evenly across the group's active members (fetched from the Settle Up cache); a member Settle Up marks inactive is left out, as it is from the member list.
 6. Integer weights are computed via GCD reduction on the final per-member totals.
 7. A single-item transaction is `POST`ed to Settle Up. `whoPaid` contains the full `total_amount` as the payer's weight, while `forWhom` contains the GCD-reduced per-member weights; `currencyCode` is the group's own currency, with an identity `exchangeRates` entry.
@@ -128,6 +128,7 @@ All variables are optional and default to an empty value unless noted otherwise.
 | `OPENROUTER_MODEL` | No | Model id sent to OpenRouter for the OCR flow | `google/gemini-3-flash-preview` |
 | `CLOUDINARY_API_SECRET` | No | Cloudinary API secret for image management | _(empty)_ |
 | `CLOUDINARY_API_KEY` | No | Cloudinary API key for image management | _(empty)_ |
+| `CLOUDINARY_CLOUD_NAME` | No | Cloudinary cloud the receipt photos are uploaded to; it must be the account the key and secret belong to, or every upload falls back to public catbox.moe (`CLOUDINARY_URL` is not read) | `dpbqobzo9` |
 | `SETTLE_UP_API_KEY` | No | Firebase web API key used to sign the Settle Up account in (Firebase Auth REST) | _(empty)_ |
 | `SETTLE_UP_API_DOMAIN` | No | Host of Settle Up's Firebase Realtime Database (e.g. `settle-up-live.firebaseio.com`) | _(empty)_ |
 | `SETTLE_UP_USER` | No | Username for Settle Up API authentication | _(empty)_ |
@@ -276,9 +277,12 @@ There is no model call and no image: the same allocation runs with the chosen it
 | --- | --- | --- |
 | `decimal_places` | `int` | As the scan returned it |
 | `receipt_items` | `list` | Each with `item_order` and `list_price` |
-| `adjustments` | `list` | Each with `printed_label`, `kind`, `amount` and the chosen `item_orders`; `percentage` and `eligible_subtotal` are optional and only echoed |
+| `adjustments` | `list` | Each with `printed_label`, `kind`, `amount` and the chosen `item_orders`, plus `percentage` and `eligible_subtotal` as the scan returned them |
 | `tax_lines` | `list` | The scan's `tax_lines` (optional) |
 | `total_amount` | `float` | The scan's `total_amount` |
+
+The chosen `item_orders` decide the allocation, and the printed `percentage` and `eligible_subtotal` check each choice: one they contradict comes back `assumed`, and when the per-rate tax bases then do not fit, those lines come back `unresolved` with `needs_review` rather than a `mismatch`.
+Send them back as the scan returned them; leaving them out skips that check.
 
 **Response** (`200`): `receipt_items` (each with `item_order`, `list_price`, `cost`, `discount`), `adjustments`, `reconciliation`, `tax_percentage` and `total_amount`, with the same meaning as in the scan response.
 A choice that cannot be applied, such as an unknown item or a discount larger than what its items cost, is a `422` with a `detail` message.
@@ -289,9 +293,14 @@ Retrieve the list of settle-up groups.
 
 **Auth:** Bearer token required.
 
-**Request:** No parameters.
+**Request** (query parameters):
 
-**Response** (`200`): a list of groups, each with:
+| Parameter | Type | Description |
+| --- | --- | --- |
+| `limit` | `int` | Optional, at most this many entries (default `100`, at least `1`) |
+| `offset` | `int` | Optional, entries to skip first (default `0`) |
+
+**Response** (`200`): an object with `count`, the number of groups before `limit` and `offset`, and `items`, the groups newest first, each with:
 
 | Field | Type | Description |
 | --- | --- | --- |
@@ -307,10 +316,13 @@ curl -X GET "http://localhost:8000/api/v1/settle-up/groups/" \
 ```
 
 ```json
-[
-  { "name": "Apartment", "id": "group-abc123", "currency": "JPY" },
-  { "name": "Trip to Taipei", "id": "group-def456", "currency": "TWD" }
-]
+{
+  "items": [
+    { "name": "Apartment", "id": "group-abc123", "currency": "JPY" },
+    { "name": "Trip to Taipei", "id": "group-def456", "currency": "TWD" }
+  ],
+  "count": 2
+}
 ```
 
 ### `GET /api/v1/settle-up/users/`
@@ -324,8 +336,10 @@ Retrieve the users in a specific settle-up group.
 | Parameter | Type | Description |
 | --- | --- | --- |
 | `group_id` | `str` | ID of the group (a Settle Up group key; one containing `.`, `/`, `#`, `$`, `[`, `]`, `?`, `%` or a control character is refused with `422`, since it would change the Firebase path) |
+| `limit` | `int` | Optional, at most this many entries (default `100`, at least `1`) |
+| `offset` | `int` | Optional, entries to skip first (default `0`) |
 
-**Response** (`200`): a list of users, each with:
+**Response** (`200`): an object with `count`, the number of active members before `limit` and `offset`, and `items`, the members, each with:
 
 | Field | Type | Description |
 | --- | --- | --- |
@@ -340,10 +354,13 @@ curl -X GET "http://localhost:8000/api/v1/settle-up/users/?group_id=group-abc123
 ```
 
 ```json
-[
-  { "name": "Member 1", "id": "member-1" },
-  { "name": "Member 2", "id": "member-2" }
-]
+{
+  "items": [
+    { "name": "Member 1", "id": "member-1" },
+    { "name": "Member 2", "id": "member-2" }
+  ],
+  "count": 2
+}
 ```
 
 ### `POST /api/v1/settle-up/transactions/`
@@ -515,7 +532,7 @@ settledown/
 - **No application database:** each app's `models.py` is empty; all state is external (Firebase, Redis, client).
 - **No Django ORM models:** transactions are created only via the Firebase REST API.
 - **No Django admin:** the app has no models to manage, and the admin answered requests without the API's bearer token.
-- **Tax is all-or-nothing on transactions:** it is computed only if `member_taxes + member_items + shared_tax == total_amount` (float equality).
+- **Tax is all-or-nothing on transactions:** it is computed only if `member_items + member_taxes + shared_items + shared_taxes == total_amount` (float equality).
 - **Scans with a deduction after tax do not reconcile**, nor do tax-on-top receipts at several rates whose printed bases do not identify each rate's items, nor receipts with a surcharge outside the tax base (such as a US gratuity with a printed tax rate); the app asks for review.
 - **No FX conversion:** transactions are filed in the group's currency and receipt amounts are assumed to match it; a receipt in a different currency than its group is recorded unconverted.
 - **The transaction endpoint trusts `total_amount`:** the scan endpoint reconciles every scan against the printed totals, but a transaction posted directly is not checked.

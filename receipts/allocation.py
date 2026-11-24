@@ -1156,8 +1156,9 @@ def corrected_receipt(
     ``items`` are ``(item_order, printed price)``, ``adjustments`` are
     ``(label, kind, amount, percentage, eligible subtotal)`` and ``tax_lines``
     are ``(rate, taxable amount, tax amount)``, as the scan response returned
-    them. The percentage and base are kept for display; chosen scopes decide
-    the allocation. Raises ``ValueError`` for anything that cannot be money.
+    them. Chosen scopes decide the allocation, and the printed percentage and
+    base check them: a choice they contradict is ``assumed``. Raises
+    ``ValueError`` for anything that cannot be money.
     """
     if not items:
         raise ValueError("A receipt needs at least one item.")
