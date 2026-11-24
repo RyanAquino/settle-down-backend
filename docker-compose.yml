@@ -2,8 +2,12 @@ services:
   redis:
     image: redis:8
     restart: always
+    # Loopback only: this Redis has no password and the app unpickles what it
+    # reads, so anyone who can reach it can run code in the app. The app
+    # container reaches it over the compose network; the port is for a
+    # server run on the host (redis://localhost:6379/1).
     ports:
-      - "6379:6379"
+      - "127.0.0.1:6379:6379"
   app:
     build: .
     restart: always

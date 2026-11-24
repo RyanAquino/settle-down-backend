@@ -159,6 +159,8 @@ docker compose up --build
 ```
 
 Inside a container, `localhost` is the container itself, so `docker-compose.yml` points the app at the `redis` service with `REDIS_URL: redis://redis:6379/1`.
+Compose publishes Redis on `127.0.0.1:6379` only, so a server run on the host still reaches it at `redis://localhost:6379/1` while other machines on the network cannot.
+Keep it that way: this Redis has no password, and the cache unpickles what it reads, so anyone who can write to it can run code in the app.
 
 To build and run the image manually (without Compose), you must create a network and a Redis container, then connect the app to it:
 
