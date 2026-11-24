@@ -477,15 +477,16 @@ settledown/
 │   ├── urls.py                 # /api/ -> NinjaAPI
 │   └── asgi.py                 # ASGI entrypoint (settledown.asgi:application)
 └── backend_api/
-    ├── api.py                  # Receipts router: POST /receipt-items/ (OCR)
+    ├── api.py                  # Receipts router (routes only): POST /receipt-items/, POST /allocations/
     ├── settleup_api.py         # Settle-up router: groups, users, transactions
     ├── settleup_utils.py       # SettleUpClient: Settle Up REST calls, caching, transaction build
     ├── firebase_auth.py        # Firebase Auth REST sign-in
     ├── utils.py                # Pure receipt-splitting math (tax inference, weights)
-    ├── ocr.py                  # Pydantic AI receipt agents (OpenRouter, OpenAI/LLM7)
+    ├── ocr.py                  # Pydantic AI receipt agents (OpenRouter, OpenAI/LLM7), scan_receipt
     ├── receipt_allocation.py   # Pure receipt money math: discount scope, allocation, reconciliation
+    ├── receipt_responses.py    # Scans and corrections as API responses
     ├── schemas.py              # Request/response schemas
-    ├── services.py             # Cloudinary + catbox.moe image upload
+    ├── services.py             # Image upload: Cloudinary, falling back to catbox.moe
     ├── dto/                    # Data structures
     │   ├── receipt_scan.py     # ReceiptScan: what the OCR model transcribes
     │   ├── settleup.py         # Settle Up data structures

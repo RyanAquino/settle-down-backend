@@ -208,7 +208,7 @@ LEGACY_RECEIPT_FIELDS = [
 def ocr_agent():
     agent = MagicMock()
     agent.run = AsyncMock(return_value=SimpleNamespace(output=RECEIPT))
-    with patch("backend_api.api.get_openrouter_receipt_agent", return_value=agent):
+    with patch("backend_api.ocr.get_openrouter_receipt_agent", return_value=agent):
         yield agent
 
 
@@ -220,7 +220,7 @@ class TestReceiptEndpoint:
     def test_response_body_is_the_scan_contract(self, client, ocr_agent):
         """Every field the installed app parses is unchanged; the rest is additive."""
         with patch(
-            "backend_api.api.cloudinary_upload_file",
+            "backend_api.services.cloudinary_upload_file",
             return_value="https://res.cloudinary.com/r.jpg",
         ):
             response = client.post(RECEIPT_URL, {"file": _upload()}, **AUTH)
@@ -276,10 +276,10 @@ class TestReceiptEndpoint:
     def test_extracts_receipt_and_hosts_image_on_cloudinary(self, client, ocr_agent):
         with (
             patch(
-                "backend_api.api.cloudinary_upload_file",
+                "backend_api.services.cloudinary_upload_file",
                 return_value="https://res.cloudinary.com/r.jpg",
             ),
-            patch("backend_api.api.catbox_upload_file") as catbox,
+            patch("backend_api.services.catbox_upload_file") as catbox,
         ):
             response = client.post(RECEIPT_URL, {"file": _upload()}, **AUTH)
 
@@ -302,7 +302,7 @@ class TestReceiptEndpoint:
             "receipt.png", png, content_type="application/octet-stream"
         )
         with patch(
-            "backend_api.api.cloudinary_upload_file",
+            "backend_api.services.cloudinary_upload_file",
             return_value="https://res.cloudinary.com/r.png",
         ):
             response = client.post(RECEIPT_URL, {"file": upload}, **AUTH)
@@ -318,14 +318,14 @@ class TestReceiptEndpoint:
     ):
         with (
             patch(
-                "backend_api.api.cloudinary_upload_file",
+                "backend_api.services.cloudinary_upload_file",
                 side_effect=RuntimeError("cloudinary down"),
             ),
             patch(
-                "backend_api.api.catbox_upload_file",
+                "backend_api.services.catbox_upload_file",
                 return_value="https://files.catbox.moe/r.jpg",
             ),
-            caplog.at_level(logging.WARNING, logger="backend_api.api"),
+            caplog.at_level(logging.WARNING, logger="backend_api.services"),
         ):
             response = client.post(RECEIPT_URL, {"file": _upload()}, **AUTH)
 
@@ -346,7 +346,7 @@ class TestReceiptEndpoint:
 def _scan_response(client, ocr_agent, scan):
     ocr_agent.run.return_value = SimpleNamespace(output=scan)
     with patch(
-        "backend_api.api.cloudinary_upload_file",
+        "backend_api.services.cloudinary_upload_file",
         return_value="https://res.cloudinary.com/r.jpg",
     ):
         response = client.post(RECEIPT_URL, {"file": _upload()}, **AUTH)
@@ -420,7 +420,7 @@ class TestDiscountedReceipts:
         now = datetime(2026, 11, 23, 6, 16, tzinfo=UTC)
         undated = scans.scan(scans.vector("sugi"), receipt_date=None)
 
-        with patch("backend_api.api.timezone.now", return_value=now):
+        with patch("backend_api.receipt_responses.timezone.now", return_value=now):
             body = _scan_response(client, ocr_agent, undated)
 
         assert body["receipt_date"] == "2026-11-23T06:16:00Z"
@@ -464,10 +464,10 @@ class TestFailedReads:
         ocr_agent.run.side_effect = fail_after_one_attempt
         with (
             patch(
-                "backend_api.api.cloudinary_upload_file",
+                "backend_api.services.cloudinary_upload_file",
                 return_value="https://res.cloudinary.com/r.jpg",
             ),
-            caplog.at_level(logging.WARNING, logger="backend_api.api"),
+            caplog.at_level(logging.WARNING, logger="backend_api.ocr"),
         ):
             response = client.post(RECEIPT_URL, {"file": _upload()}, **AUTH)
 

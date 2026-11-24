@@ -6,6 +6,8 @@ client/provider, which raises if the relevant API key is unset.
 
 - ``get_receipt_agent``: OpenAI client + LLM7 model wrapper + translate tool.
 - ``get_openrouter_receipt_agent``: OpenRouter provider (clean OpenAIChatModel).
+- ``scan_receipt``: reads one photo with the OpenRouter agent and returns the
+  best attempt of the run.
 
 Both delegate to ``_build_agent`` for the shared output schema, instructions,
 retry budget, output validator, and translate tool. The only difference is the
@@ -17,6 +19,7 @@ does all of the money math, and the output validator uses it to decide whether
 a transcription is worth reading again.
 """
 
+import logging
 from dataclasses import dataclass, field
 from decimal import Decimal
 from functools import lru_cache
@@ -24,7 +27,7 @@ from functools import lru_cache
 from django.conf import settings
 from googletrans import Translator
 from openai import AsyncOpenAI
-from pydantic_ai import Agent, ModelRetry, RunContext, ToolOutput
+from pydantic_ai import Agent, BinaryContent, ModelRetry, RunContext, ToolOutput
 from pydantic_ai.models import Model
 from pydantic_ai.models.openrouter import OpenRouterModel
 from pydantic_ai.providers.openai import OpenAIProvider
@@ -37,6 +40,8 @@ from backend_api.receipt_allocation import (
     TranscriptionError,
     allocate_scan,
 )
+
+logger = logging.getLogger(__name__)
 
 INSTRUCTIONS = """\
 You are an expert receipt-reading system for Japanese and English receipts.
@@ -184,3 +189,52 @@ def get_openrouter_receipt_agent() -> Agent[ScanAttempts, ReceiptScan]:
         provider=OpenRouterProvider(api_key=settings.OPENROUTER_API_KEY),
     )
     return _build_agent(model)
+
+
+# Brands a phone writes in a HEIC photo's "ftyp" box (bytes 8-12).
+_HEIC_BRANDS = {b"heic", b"heix", b"hevc", b"hevx", b"heim", b"heis", b"mif1", b"msf1"}
+
+
+def image_media_type(data: bytes) -> str:
+    """The media type of a receipt photo, read from its first bytes.
+
+    Uploads are phone photos: JPEG from either camera, PNG screenshots, WebP
+    from some Android galleries, or HEIC from iPhone and Android HEIF photos.
+    The bytes decide, because the type a phone declares is often generic.
+    Anything else is sent as JPEG, as every upload was before.
+    """
+    if data.startswith(b"\x89PNG\r\n\x1a\n"):
+        return "image/png"
+    if data[:4] == b"RIFF" and data[8:12] == b"WEBP":
+        return "image/webp"
+    if data[4:8] == b"ftyp" and data[8:12] in _HEIC_BRANDS:
+        return "image/heic"
+    return "image/jpeg"
+
+
+async def scan_receipt(data: bytes) -> ReceiptScan:
+    """Transcribe a receipt photo, answering with the best attempt of the run.
+
+    If a later read, or the model call itself, fails after an earlier read was
+    already usable as money, that earlier read is the answer rather than an
+    error. With no usable read, the failure propagates.
+    """
+    attempts = ScanAttempts()
+    try:
+        result = await get_openrouter_receipt_agent().run(
+            [
+                "here is the image receipt:",
+                BinaryContent(data=data, media_type=image_media_type(data)),
+            ],
+            deps=attempts,
+        )
+    except Exception:
+        best = attempts.best()
+        if best is None:
+            raise
+        logger.warning(
+            "Receipt read failed after a usable attempt; using the best attempt",
+            exc_info=True,
+        )
+        return best
+    return result.output

@@ -1,8 +1,12 @@
+import logging
+
 import cloudinary
 import cloudinary.uploader
 import requests
 from django.conf import settings
 from ninja import UploadedFile
+
+logger = logging.getLogger(__name__)
 
 
 def catbox_upload_file(file_obj: UploadedFile) -> str:
@@ -32,3 +36,16 @@ def cloudinary_upload_file(file_obj: UploadedFile) -> str:
     )
     url: str = upload_result["secure_url"]
     return url
+
+
+def upload_receipt_image(file_obj: UploadedFile) -> str:
+    """Host the receipt photo on Cloudinary, or on catbox.moe if that fails."""
+    try:
+        return cloudinary_upload_file(file_obj)
+    except Exception:
+        # Any Cloudinary failure (config, network, API error) falls back to
+        # catbox; keep the traceback so the root cause is not lost.
+        logger.warning(
+            "Cloudinary upload failed; falling back to catbox", exc_info=True
+        )
+        return catbox_upload_file(file_obj)

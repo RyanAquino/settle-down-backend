@@ -1,6 +1,6 @@
 import pytest
 
-from backend_api.api import image_media_type
+from backend_api.ocr import image_media_type
 
 JPEG = b"\xff\xd8\xff\xe0\x00\x10JFIF"
 PNG = b"\x89PNG\r\n\x1a\n\x00\x00\x00\rIHDR"

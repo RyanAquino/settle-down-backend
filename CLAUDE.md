@@ -46,19 +46,23 @@ The running app **does** require Redis (`django_redis` cache backend) and the en
 ## Architecture
 
 Request entry is `settledown/api.py`: one `NinjaAPI` protected by `GlobalAuth`, an `HttpBearer` that compares the token to `settings.APP_AUTH` in constant time and rejects everything when `APP_AUTH` is unset.
-It mounts two routers under `/api/`:
+It mounts two routers under `/api/`.
+Router modules (`backend_api/api.py`, `backend_api/settleup_api.py`) hold routes only: a route calls the modules below it, maps their errors to HTTP and returns; helpers live in those modules, not beside the routes.
 
 - `/api/v1/receipts/receipt-items/` (`backend_api/api.py`) is **the OCR flow**.
-  An async `pydantic-ai` `Agent` from `get_openrouter_receipt_agent()` (OpenRouter, model `settings.OPENROUTER_MODEL`) reads the uploaded image with a strict `ToolOutput(ReceiptScan)` (`backend_api/dto/receipt_scan.py`).
+  `scan_receipt()` (`backend_api/ocr.py`) runs an async `pydantic-ai` `Agent` from `get_openrouter_receipt_agent()` (OpenRouter, model `settings.OPENROUTER_MODEL`), which reads the uploaded image with a strict `ToolOutput(ReceiptScan)` (`backend_api/dto/receipt_scan.py`).
+  The image's media type comes from its bytes (`image_media_type`), because uploads are phone photos whose declared type is often generic.
   The model only **transcribes**: printed item prices, every printed line that changes the amount to pay (discounts, coupons, points, surcharges, each with its printed amount, percent, base and the items it names), the tax lines and the amount due.
   It never nets a discount into a price or computes a total.
   `backend_api/receipt_allocation.py` does all of that money math (see below), and the response's `cost` is each line's share after every adjustment.
   It has one tool, `translate_jp_to_en_text` (Google Translate).
   The output validator (`validate_receipt_scan`) asks for a re-read only when a transcription cannot be read as money, and for at most one targeted re-read when it does not add up; it records every attempt in `ScanAttempts` (the run's deps) and the run ends with the best one, not the last.
-  If a later read fails outright, the endpoint still answers with the best earlier attempt.
-- `/api/v1/receipts/allocations/` recalculates a scanned receipt with the items a person chose for each adjustment (the app's review step); no model call, and a choice that cannot be applied is a 422.
-  The image is then uploaded to Cloudinary, falling back to catbox.moe on any exception (logged with its traceback).
+  If a later read fails outright, `scan_receipt()` still answers with the best earlier attempt.
   `get_receipt_agent()` is an alternate OpenAI/LLM7 factory (`gpt-5-mini`) wrapped by `backend_api/dto/llm7_override.py` (`LLM7ChatModel`), a parsing workaround; don't delete it as dead code.
+  The image is then uploaded by `upload_receipt_image()` (`backend_api/services.py`) to Cloudinary, falling back to catbox.moe on any exception (logged with its traceback).
+  `backend_api/receipt_responses.py` maps the scan and its allocation onto the response.
+- `/api/v1/receipts/allocations/` recalculates a scanned receipt with the items a person chose for each adjustment (the app's review step); no model call, and a choice that cannot be applied is a 422.
+  `corrected_allocation()` computes it and `allocation_response()` maps it, both in `backend_api/receipt_responses.py`.
 - `/api/v1/settle-up/...` (`backend_api/settleup_api.py`) lists groups, lists members, and creates a transaction.
   All delegate to `SettleUpClient`.
 
@@ -121,7 +125,7 @@ Understand both before touching anything financial:
 CI does not run these; check them locally with `uv run lint-imports` before changing imports between modules.
 
 
-Layers, top to bottom: `settledown.urls` > `settledown.api` > routers (`backend_api.api`, `settleup_api`) > integrations (`settleup_utils`, `ocr`, `services`) > `schemas` > `utils`, `receipt_allocation`, `firebase_auth` > `dto`.
+Layers, top to bottom: `settledown.urls` > `settledown.api` > routers (`backend_api.api`, `settleup_api`) > integrations (`settleup_utils`, `ocr`, `services`, `receipt_responses`) > `schemas` > `utils`, `receipt_allocation`, `firebase_auth` > `dto`.
 A layer may only import layers below it, and siblings may not import each other.
 `backend_api.utils` and `backend_api.receipt_allocation` must not import Django, ninja, `requests`, or any SDK, which is why `utils` types its inputs structurally (`MemberCost` protocol) instead of importing `schemas.UserTransactionSchema`, and why `dto/receipt_scan.py` must stay Django-free.
 A new pure module is unchecked until it is listed in the layers, the purity contract's `source_modules` and the strict mypy override.

@@ -165,7 +165,7 @@ layers = [
     "settledown.urls",
     "settledown.api",
     "backend_api.api | backend_api.settleup_api",
-    "backend_api.settleup_utils | backend_api.ocr | backend_api.services",
+    "backend_api.settleup_utils | backend_api.ocr | backend_api.services | backend_api.receipt_responses",
     "backend_api.schemas",
     "backend_api.utils | backend_api.receipt_allocation | backend_api.firebase_auth",
     "backend_api.dto",

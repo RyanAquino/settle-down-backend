@@ -25,9 +25,8 @@ from pathlib import Path
 import pytest
 from pydantic_ai import BinaryContent
 
-from backend_api.api import image_media_type
 from backend_api.dto.receipt_scan import ReceiptScan
-from backend_api.ocr import ScanAttempts, get_openrouter_receipt_agent
+from backend_api.ocr import ScanAttempts, get_openrouter_receipt_agent, image_media_type
 from backend_api.receipt_allocation import allocate_scan
 
 _FIXTURE_DIR = Path(__file__).parent / "fixtures"
