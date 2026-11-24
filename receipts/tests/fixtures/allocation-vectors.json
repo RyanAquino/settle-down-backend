@@ -1795,5 +1795,25 @@
       "difference": 0,
       "scopes": [["unresolved", [2]]]
     }
+  },
+  {
+    "name": "per_rate_base_one_unit_from_one_item_after_a_coupon",
+    "why": "Tax added on top at 8% (13 on 174) and 10% (52 on 523) after a 99 coupon over the whole receipt, which this module splits 25, 25 and 49: the 198 item at 173, the 200 item at 175. Only the 198 item comes within the coupon's unit of the 8% base below it, so it is the 8% item, and the 200 item a unit above must not make the base look ambiguous.",
+    "decimal_places": 0,
+    "items": [198, 200, 398],
+    "adjustments": [
+      {"label": "クーポン", "kind": "discount", "amount": 99, "percentage": null, "item_orders": [], "eligible_subtotal": null}
+    ],
+    "tax_lines": [[8, 174, 13], [10, 523, 52]],
+    "amount_due": 762,
+    "expected": {
+      "status": "reconciled",
+      "costs": [186, 192, 384],
+      "total": 762,
+      "tax_percentage": 10,
+      "tax_added": false,
+      "difference": 0,
+      "scopes": [["assumed", [1, 2, 3]]]
+    }
   }
 ]

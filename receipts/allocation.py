@@ -397,22 +397,22 @@ def _nearest_subset(
 ) -> tuple[int, ...] | None:
     """The one subset whose weights come nearest ``target``, within ``tolerance``.
 
-    Distances are tried nearest first, both sides together. At the first one
-    some subset reaches, exactly one must: several mean the target does not
-    single out the items, whatever a farther distance would find. None then,
-    when no subset comes within ``tolerance``, or when the budget runs out.
+    Targets are tried nearest first (the target itself, then one below, one
+    above, and so on), and the first one some subset reaches decides: exactly
+    one subset there is the answer, several mean the target does not single
+    out the items, so a farther unique subset must not stand in for them.
+    None then, when no subset comes within ``tolerance``, or when the budget
+    runs out.
     """
-    for distance in range(tolerance + 1):
-        found = [
-            _subsets_reaching(orders, weights, near, budget)
-            for near in {target - distance, target + distance}
-            if near > 0
-        ]
-        count = sum(reaching for reaching, _ in found)
-        if count == 1:
-            return next(subset for _, subset in found if subset is not None)
-        if count > 1:
-            return None
+    nearest_first = [target] + [
+        near
+        for distance in range(1, tolerance + 1)
+        for near in (target - distance, target + distance)
+    ]
+    for near in [near for near in nearest_first if near > 0]:
+        reaching, subset = _subsets_reaching(orders, weights, near, budget)
+        if reaching:
+            return subset
     return None
 
 
@@ -759,9 +759,9 @@ def _tax_by_items(
     to that rate's printed base; the largest rate takes the rest, which must add
     up to its base too. A store may round each rate's share of a deduction
     separately, so a base is matched within ``tolerance``, nearest first: two
-    sets of items at the nearest distance leave it unknown, even if a farther
-    one is unique. ``lines`` are the complete tax lines. None when the bases do
-    not single out the items.
+    sets of items at the nearest target reached leave it unknown, even if a
+    farther one is unique. ``lines`` are the complete tax lines. None when the
+    bases do not single out the items.
     """
     lines = sorted(lines, key=lambda line: line.taxable_amount or 0)
     remaining = tuple(order for order, net in nets.items() if net > 0)
