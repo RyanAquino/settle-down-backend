@@ -281,7 +281,7 @@ class TestDiscountedReceipts:
         now = datetime(2026, 11, 23, 6, 16, tzinfo=UTC)
         undated = scans.scan(scans.vector("sugi"), receipt_date=None)
 
-        with patch("receipts.services.timezone.now", return_value=now):
+        with patch("receipts.api.timezone.now", return_value=now):
             body = _scan_response(client, ocr_agent, undated)
 
         assert body["receipt_date"] == "2026-11-23T06:16:00Z"

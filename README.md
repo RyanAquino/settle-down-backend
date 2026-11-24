@@ -480,7 +480,7 @@ settledown/
 ├── receipts/                   # App: /api/v1/receipts/
 │   ├── api.py                  # Router (routes only): POST /receipt-items/, POST /allocations/
 │   ├── schemas.py              # Request/response schemas
-│   ├── services.py             # Responses: scan_response, recalculate_receipt
+│   ├── services.py             # recalculate_receipt and the response helpers both routes share
 │   ├── ocr.py                  # Pydantic AI receipt agents (OpenRouter, OpenAI/LLM7), read_receipt
 │   ├── image_hosting.py        # Photo hosting: Cloudinary, falling back to catbox.moe
 │   ├── allocation.py           # Pure receipt money math: discount scope, allocation, reconciliation

@@ -23,6 +23,7 @@
             }
           }
         },
+        "description": "Read a receipt photo and say what each line cost.\n\n``cost`` is what each line cost after every adjustment, so the items add\nup to ``total_amount`` (or do with ``tax_percentage`` added on top). A scan\nthat does not reconcile allocates nothing: every cost is 0 and the review\nstep reads ``list_price``.",
         "tags": [
           "receipts"
         ],
