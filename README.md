@@ -362,7 +362,7 @@ Create a new settlement transaction. Transactions are filed in **the group's cur
 | `user_receipt_items` | `list[UserTransactionSchema]` | Receipt items per user (each with `member_id: str`, `cost: float`) |
 | `split_receipt_items` | `list[float]` | Optional split items (defaults to an empty list) |
 | `group_id` | `str` | Group ID |
-| `receipt_date` | `datetime \| None` | Optional receipt date |
+| `receipt_date` | `datetime \| None` | Optional receipt date; an offset is honoured and a date without one is read as UTC (defaults to now) |
 | `receipt_image_url` | `str \| None` | Optional receipt image URL |
 
 **Response:** `204 No Content` (empty body) on success.
@@ -384,7 +384,7 @@ curl -X POST "http://localhost:8000/api/v1/settle-up/transactions/" \
     ],
     "split_receipt_items": [],
     "group_id": "group-abc123",
-    "receipt_date": "2026-05-30T12:34:56",
+    "receipt_date": "2026-05-30T03:34:56.000Z",
     "receipt_image_url": "https://res.cloudinary.com/example/image/upload/receipt.jpg"
   }'
 ```

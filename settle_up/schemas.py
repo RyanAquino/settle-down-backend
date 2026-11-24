@@ -31,7 +31,11 @@ class TransactionPostIn(Schema):
     )
     group_id: str
     receipt_date: datetime | None = Field(
-        default=None, description="The date of the receipt in Japan timezone"
+        default=None,
+        description=(
+            "When the receipt was issued. An offset is honoured; a date without "
+            "one is read as UTC. Defaults to now"
+        ),
     )
     receipt_image_url: str | None = Field(
         default=None, description="The url of the uploaded receipt image"

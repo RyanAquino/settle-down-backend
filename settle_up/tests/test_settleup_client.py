@@ -4,7 +4,7 @@ The happy-path money math lives in ``test_transaction.py`` and the payload
 shape in ``test_create_transaction.py``; this module covers what surrounds them.
 """
 
-from datetime import datetime
+from datetime import UTC, datetime, timedelta, timezone
 from typing import Any
 
 import pytest
@@ -128,12 +128,30 @@ class TestCreateTransaction:
     def test_receipt_date_becomes_the_transaction_time(
         self, settle_up_client, mock_settleup
     ):
-        # Naive on purpose: clients send receipt dates without an offset.
+        # Naive on purpose: a date without an offset is read as UTC.
         receipt_date = datetime(2026, 5, 30, 12, 34, 56)  # noqa: DTZ001
         settle_up_client.create_transaction(_payload(receipt_date=receipt_date))
 
         body = mock_settleup.requests.post.call_args.kwargs["json"]
         assert body["dateTime"] == 1780144496000
+
+    @pytest.mark.parametrize(
+        "receipt_date",
+        [
+            # What the app sends: Date.toISOString(), always UTC.
+            datetime(2026, 11, 23, 11, tzinfo=UTC),
+            # The same instant as a Japanese wall-clock time.
+            datetime(2026, 11, 23, 20, tzinfo=timezone(timedelta(hours=9))),
+        ],
+    )
+    def test_receipt_date_keeps_its_offset(
+        self, settle_up_client, mock_settleup, receipt_date
+    ):
+        settle_up_client.create_transaction(_payload(receipt_date=receipt_date))
+
+        body = mock_settleup.requests.post.call_args.kwargs["json"]
+        # 2026-11-23T11:00:00Z
+        assert body["dateTime"] == 1795431600000
 
     def test_members_owing_nothing_are_left_out_of_for_whom(
         self, settle_up_client, mock_settleup

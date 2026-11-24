@@ -924,7 +924,7 @@
                 "type": "null"
               }
             ],
-            "description": "The date of the receipt in Japan timezone",
+            "description": "When the receipt was issued. An offset is honoured; a date without one is read as UTC. Defaults to now",
             "title": "Receipt Date"
           },
           "receipt_image_url": {

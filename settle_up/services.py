@@ -150,8 +150,11 @@ class SettleUpClient:
         )
 
     def create_transaction(self, payload: TransactionPostIn) -> dict[str, Any]:
-        if payload.receipt_date:
-            receipt_date = payload.receipt_date.replace(tzinfo=UTC)
+        if receipt_date := payload.receipt_date:
+            # A date without an offset is read as UTC; one with an offset is
+            # already an instant, which timestamp() converts.
+            if receipt_date.tzinfo is None:
+                receipt_date = receipt_date.replace(tzinfo=UTC)
             date_time_ms = int(receipt_date.timestamp() * 1000)
         else:
             date_time_ms = time.time_ns() // 1_000_000
