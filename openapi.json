@@ -212,6 +212,7 @@
             "description": "No Content"
           }
         },
+        "description": "File a receipt in its Settle Up group as one expense.\n\n204: Settle Up filed it. 422: no member owes anything, so there is nothing\nto split.",
         "tags": [
           "settle-up"
         ],
@@ -905,6 +906,7 @@
           "split_receipt_items": {
             "description": "Split receipt items",
             "items": {
+              "minimum": 0,
               "type": "number"
             },
             "title": "Split Receipt Items",
@@ -958,6 +960,7 @@
             "type": "string"
           },
           "cost": {
+            "minimum": 0,
             "title": "Cost",
             "type": "number"
           }

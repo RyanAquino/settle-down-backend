@@ -107,6 +107,65 @@ class TestSettleUpEndpoints:
         assert response.json()["detail"][0]["loc"][-1] == "tax_percentage"
         mock_settleup.requests.post.assert_not_called()
 
+    @pytest.mark.parametrize(
+        ("changes", "field"),
+        [
+            ({"total_amount": "NaN"}, "total_amount"),
+            ({"total_amount": "Infinity"}, "total_amount"),
+            (
+                {"user_receipt_items": [{"member_id": "Member 1", "cost": "NaN"}]},
+                "cost",
+            ),
+            (
+                {
+                    "user_receipt_items": [
+                        {"member_id": "Member 1", "cost": "-Infinity"}
+                    ]
+                },
+                "cost",
+            ),
+            ({"user_receipt_items": [{"member_id": "Member 1", "cost": -1}]}, "cost"),
+            ({"split_receipt_items": ["Infinity"]}, 0),
+            ({"split_receipt_items": [-1]}, 0),
+        ],
+    )
+    def test_create_transaction_rejects_amounts_that_are_not_money(
+        self, client, mock_settleup, changes, field
+    ):
+        response = client.post(
+            TRANSACTIONS_URL,
+            {**LUNCH, "tax_percentage": 10, "total_amount": 3, **changes},
+            content_type="application/json",
+            **AUTH,
+        )
+
+        assert response.status_code == 422
+        assert response.json()["detail"][0]["loc"][-1] == field
+        mock_settleup.requests.post.assert_not_called()
+
+    @pytest.mark.parametrize(
+        "items",
+        [
+            {"user_receipt_items": []},
+            {"user_receipt_items": [{"member_id": "Member 1", "cost": 0}]},
+            # Half a cent each for the two members: nothing at cent precision.
+            {"user_receipt_items": [], "split_receipt_items": [0.01]},
+        ],
+    )
+    def test_create_transaction_with_nothing_to_split_is_refused(
+        self, client, mock_settleup, items
+    ):
+        response = client.post(
+            TRANSACTIONS_URL,
+            {**LUNCH, "tax_percentage": 10, "total_amount": 3, **items},
+            content_type="application/json",
+            **AUTH,
+        )
+
+        assert response.status_code == 422
+        assert "Nothing to split" in response.json()["detail"]
+        mock_settleup.requests.post.assert_not_called()
+
     def test_create_transaction_validates_the_payload(self, client, mock_settleup):
         response = client.post(
             TRANSACTIONS_URL,

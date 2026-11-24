@@ -68,6 +68,7 @@ Routes call the functions below them directly, map their errors to HTTP and buil
   Only the allocation is guarded, so a fault while building the response (a pydantic `ValidationError` is a `ValueError`) stays a 500.
 - `/api/v1/settle-up/...` (`settle_up/api.py`) lists groups, lists members, and creates a transaction.
   All delegate to `SettleUpClient` (`settle_up/services.py`).
+  A transaction body with nothing to split (`NothingToSplitError`) is a 422.
 
 Swagger UI is at `/api/docs` (no trailing slash; authorize with the `APP_AUTH` bearer token).
 
@@ -151,6 +152,7 @@ A new module is unchecked until it is listed in its app's layers; a new pure mod
 Tests live in each app's `tests/` package, and the project wiring's in `settledown/tests/` (bearer auth, the OpenAPI snapshot, the server entrypoints).
 `settle_up/tests/conftest.py` provides the `settle_up_client` fixture: a real `SettleUpClient` with `firebase_auth`, `requests`, and `cache` patched, so no login/network/Redis happens.
 The fixture routes the mocked `requests.get` **by URL**: `groups/{id}.json` resolves to a mutable `group_json` (default `GROUP_INFO`, currency JPY) that tests change in place to simulate another currency; every other URL falls through to the shared `return_value`.
+The mocked `requests.post` answers with a real `requests.Response` (`firebase_answer(200, {"name": "tx-1"})`), because a `MagicMock` response is always `ok`; build error answers with `firebase_answer` too.
 The mocked members endpoint returns exactly **Member 1 and Member 2** (`GROUP_MEMBERS`), and the split-related assertions in `test_transaction.py` depend on that two-member group.
 
 - `test_transaction.py` exercises `_compute_transaction()` across tax-included / tax-excluded / shared-split / fractional-tax / cent-rounding scenarios.

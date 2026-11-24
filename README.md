@@ -358,14 +358,17 @@ Create a new settlement transaction. Transactions are filed in **the group's cur
 | `purpose` | `str` | Transaction purpose |
 | `paying_member_id` | `str` | ID of the member paying |
 | `tax_percentage` | `float` | Finite tax percentage, such as `8.25` or `10` |
-| `total_amount` | `float` | Total transaction amount |
-| `user_receipt_items` | `list[UserTransactionSchema]` | Receipt items per user (each with `member_id: str`, `cost: float`) |
-| `split_receipt_items` | `list[float]` | Optional split items (defaults to an empty list) |
+| `total_amount` | `float` | Finite total transaction amount |
+| `user_receipt_items` | `list[UserTransactionSchema]` | Receipt items per user (each with `member_id: str`, `cost: float`, finite and not negative) |
+| `split_receipt_items` | `list[float]` | Optional split items, finite and not negative (defaults to an empty list) |
 | `group_id` | `str` | Group ID |
 | `receipt_date` | `datetime \| None` | Optional receipt date; an offset is honoured and a date without one is read as UTC (defaults to now) |
 | `receipt_image_url` | `str \| None` | Optional receipt image URL |
 
-**Response:** `204 No Content` (empty body) on success.
+**Response:** `204 No Content` (empty body) when Settle Up filed the transaction.
+The other answers carry a `detail` message:
+
+- `422`: the body is invalid, or no member owes anything at cent precision, so there is nothing to split.
 
 **Example:**
 

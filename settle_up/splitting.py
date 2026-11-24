@@ -30,14 +30,23 @@ class MemberCost(Protocol):
         """The line cost, in the group's currency."""
 
 
+class NothingToSplitError(ValueError):
+    """No member owes anything at cent precision, so there is no split to file."""
+
+
 def compute_weights(shares: Sequence[float]) -> list[int]:
     """Convert member shares into the smallest integer-ratio weights.
 
     shares: list of member shares (e.g., [36, 64])
     returns: list of weights (e.g., [9, 16])
+
+    Raises ``NothingToSplitError`` when there are no shares or every one
+    rounds to 0 cents: no ratio can be formed from them.
     """
     scaled = [round(s * 100) for s in shares]
-    gcd_all = reduce(math.gcd, scaled)
+    gcd_all = reduce(math.gcd, scaled, 0)
+    if gcd_all == 0:
+        raise NothingToSplitError("Nothing to split: every member's share is 0.")
     return [s // gcd_all for s in scaled]
 
 
