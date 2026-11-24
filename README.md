@@ -159,7 +159,8 @@ The simplest way to run the app together with Redis is Docker Compose:
 docker compose up --build
 ```
 
-Inside a container, `localhost` is the container itself, so `docker-compose.yml` points the app at the `redis` service with `REDIS_URL: redis://redis:6379/1`.
+The image holds no secrets: `.env` is excluded from the build, and Compose passes it to the app at run time when there is one, so `APP_AUTH` and the upstream credentials come from it.
+Inside a container, `localhost` is the container itself, so `docker-compose.yml` points the app at the `redis` service with `REDIS_URL: redis://redis:6379/1`, which takes precedence over a `REDIS_URL` in `.env`.
 Compose publishes Redis on `127.0.0.1:6379` only, so a server run on the host still reaches it at `redis://localhost:6379/1` while other machines on the network cannot.
 Keep it that way: this Redis has no password, and the cache unpickles what it reads, so anyone who can write to it can run code in the app.
 
@@ -170,7 +171,7 @@ docker build -t settledown .
 
 docker network create settledown
 docker run -d --name redis --network settledown redis:8
-docker run -p 8000:8000 --network settledown -e REDIS_URL=redis://redis:6379/1 settledown
+docker run -p 8000:8000 --network settledown --env-file .env -e REDIS_URL=redis://redis:6379/1 settledown
 ```
 
 ## API Reference
