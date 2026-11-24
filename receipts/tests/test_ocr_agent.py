@@ -16,7 +16,7 @@ import httpx
 import pytest
 from django.test import override_settings
 from openai import AsyncOpenAI
-from pydantic_ai import Agent, ModelRetry
+from pydantic_ai import Agent
 from pydantic_ai.models.openai import OpenAIChatModel
 from pydantic_ai.models.openrouter import OpenRouterModel
 from pydantic_ai.providers.openai import OpenAIProvider
@@ -24,6 +24,7 @@ from pydantic_ai.providers.openrouter import OpenRouterProvider
 
 from receipts.llm7 import LLM7ChatModel
 from receipts.ocr import (
+    TRANSLATION_UNAVAILABLE,
     ScanAttempts,
     _build_agent,
     get_openrouter_receipt_agent,
@@ -118,16 +119,16 @@ def test_translate_tool_returns_the_english_text():
 
 
 @override_settings(OPENROUTER_API_KEY="test-key")
-def test_translate_tool_asks_the_model_to_retry_on_failure():
-    translator = _translator(AsyncMock(side_effect=OSError("blocked")))
-    with (
-        patch("receipts.ocr.Translator", return_value=translator),
-        pytest.raises(ModelRetry, match="shorter chunk") as exc,
-    ):
-        asyncio.run(_translate_tool()("おにぎり"))
+def test_translate_tool_has_the_model_translate_when_it_fails(caplog):
+    translator = _translator(AsyncMock(side_effect=httpx.ConnectError("blocked")))
+    with patch("receipts.ocr.Translator", return_value=translator):
+        result = asyncio.run(_translate_tool()("おにぎり"))
 
-    assert isinstance(exc.value.__cause__, OSError)
+    assert result == TRANSLATION_UNAVAILABLE
     translator.__aexit__.assert_awaited_once()
+    (record,) = caplog.records
+    assert record.levelname == "WARNING"
+    assert isinstance(record.exc_info[1], httpx.ConnectError)
 
 
 class _ChatCompletions:

@@ -56,7 +56,7 @@ Routes call the functions below them directly, map their errors to HTTP and buil
   The model only **transcribes**: printed item prices, every printed line that changes the amount to pay (discounts, coupons, points, surcharges, each with its printed amount, percent, base and the items it names), the tax lines and the amount due.
   It never nets a discount into a price or computes a total.
   `receipts/allocation.py` does all of that money math (see below), and the response's `cost` is each line's share after every adjustment.
-  It has one tool, `translate_jp_to_en_text` (Google Translate).
+  It has one tool, `translate_jp_to_en_text` (Google Translate); a failed translation is logged and answered with `TRANSLATION_UNAVAILABLE`, never `ModelRetry`, so a blocked translator cannot spend the run's retries and fail the scan.
   The output validator (`validate_receipt_scan`) asks for a re-read only when a transcription cannot be read as money, and for at most one targeted re-read when it does not add up; it records every attempt in `ScanAttempts` (the run's deps) and the run ends with the best one, not the last.
   If a later read fails outright, `read_receipt()` still answers with the best earlier attempt.
   `get_receipt_agent()` is an alternate OpenAI/LLM7 factory (`gpt-5-mini`) wrapped by `receipts/llm7.py` (`LLM7ChatModel`), a parsing workaround; don't delete it as dead code.

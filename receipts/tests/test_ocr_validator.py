@@ -5,6 +5,9 @@ transcription per request, so these tests pin how many model requests a scan
 costs and which transcription the run ends with. No network is touched.
 """
 
+from unittest.mock import AsyncMock, MagicMock, patch
+
+import httpx
 import pytest
 from pydantic_ai import UnexpectedModelBehavior
 from pydantic_ai.messages import ModelResponse, RetryPromptPart, ToolCallPart
@@ -168,3 +171,41 @@ class TestUnreadableTranscriptions:
         best = attempts.best()
         assert best is not None
         assert _status(best) == "mismatch"
+
+
+class TranslatingScript(Script):
+    """Calls the translate tool on each of the first ``calls`` requests."""
+
+    def __init__(self, calls, *payloads):
+        super().__init__(*payloads)
+        self.calls = calls
+
+    def respond(self, messages, info: AgentInfo) -> ModelResponse:
+        if len(self.requests) < self.calls:
+            self.requests.append(messages)
+            return ModelResponse(
+                parts=[
+                    ToolCallPart(
+                        tool_name="translate_jp_to_en_text", args={"text": "おにぎり"}
+                    )
+                ]
+            )
+        return super().respond(messages, info)
+
+
+class TestTranslationFailures:
+    def test_a_scan_finishes_when_translation_keeps_failing(self):
+        # googletrans scrapes an unofficial endpoint; a blocked connection is
+        # one way it fails. The model reads Japanese itself, so the scan must
+        # not depend on it.
+        translator = MagicMock()
+        translator.__aenter__.return_value = translator
+        translator.translate = AsyncMock(side_effect=httpx.ConnectError("blocked"))
+        script = TranslatingScript(3, SUGI)
+
+        with patch("receipts.ocr.Translator", return_value=translator):
+            output, _ = _run(script)
+
+        assert output == ReceiptScan.model_validate(SUGI)
+        assert len(script.requests) == 4
+        assert translator.translate.await_count == 3

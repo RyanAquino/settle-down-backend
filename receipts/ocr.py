@@ -58,6 +58,11 @@ You receive a receipt as an image. Transcribe it into the output schema. Copy wh
 - Date: report `receipt_date` in Japan Standard Time. If the receipt shows no date, use null.
 """
 
+# What the translate tool answers when the translation fails.
+TRANSLATION_UNAVAILABLE = (
+    "Translation is unavailable. Translate this text into English yourself."
+)
+
 # Best first: a scan that reconciles, then one that only needs a person to
 # confirm which items an adjustment covers, then one that does not add up.
 _STATUS_RANK = {"reconciled": 0, "needs_review": 1, "mismatch": 2}
@@ -154,12 +159,15 @@ def _build_agent(model: Model) -> Agent[ScanAttempts, ReceiptScan]:
             # or every call would leave its connection open.
             async with Translator() as translator:
                 text_result = await translator.translate(text, dest="en")
-        except Exception as exc:
-            # googletrans scrapes an unofficial endpoint and fails in many ways;
-            # every one of them is worth a retry with a smaller input.
-            raise ModelRetry(
-                "Translation failed, please try with a shorter chunk of text."
-            ) from exc
+        except Exception:
+            # googletrans scrapes an unofficial endpoint and fails in many
+            # ways. The model reads Japanese itself, so it translates on its
+            # own instead: retrying the tool would spend the run's retry
+            # budget and end the whole scan in an error.
+            logger.warning(
+                "Translation failed; the model translates itself", exc_info=True
+            )
+            return TRANSLATION_UNAVAILABLE
 
         translated: str = text_result.text
         return translated
