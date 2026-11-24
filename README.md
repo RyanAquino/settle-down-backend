@@ -161,6 +161,7 @@ docker compose up --build
 ```
 
 The image holds no secrets: `.env` is excluded from the build, and Compose passes it to the app at run time when there is one, so `APP_AUTH` and the upstream credentials come from it.
+Compose parses `.env` itself and expands `$` in unquoted and double-quoted values, so single-quote a value that contains `$`; `load_dotenv` reads single quotes the same way.
 Inside a container, `localhost` is the container itself, so `docker-compose.yml` points the app at the `redis` service with `REDIS_URL: redis://redis:6379/1`, which takes precedence over a `REDIS_URL` in `.env`.
 Compose publishes Redis on `127.0.0.1:6379` only, so a server run on the host still reaches it at `redis://localhost:6379/1` while other machines on the network cannot.
 Keep it that way: this Redis has no password, and the cache unpickles what it reads, so anyone who can write to it can run code in the app.
@@ -174,6 +175,8 @@ docker network create settledown
 docker run -d --name redis --network settledown redis:8
 docker run -p 8000:8000 --network settledown --env-file .env -e REDIS_URL=redis://redis:6379/1 settledown
 ```
+
+`docker run --env-file` keeps quotes as part of a value, so this recipe needs `.env` values written without quotes.
 
 ## API Reference
 
@@ -201,7 +204,7 @@ Extract receipt items from an uploaded image using OCR via AI.
 | `receipt_items` | `list[OCRReceiptItemOut]` | Items in printed order, each with `english_name: str`, `japanese_name: str`, `item_order: int` (from 1), `cost: float`, `quantity: int` and `discount: float` |
 | `en_shop_name` | `str` | Shop name in English |
 | `jp_shop_name` | `str` | Shop name as printed |
-| `tax_percentage` | `float` | The printed tax rate (the one with the largest taxable base when several are printed), or 0 |
+| `tax_percentage` | `float` | The printed non-zero tax rate (the one with the largest taxable base when several are printed), or 0 |
 | `total_amount` | `float` | What the group splits: the amount paid after every discount, coupon and points |
 | `receipt_date` | `datetime` | Receipt date |
 | `receipt_image_url` | `str` | URL of the uploaded receipt image |
@@ -539,7 +542,7 @@ settledown/
 - **Settle Up metadata is cached ~24h** (~86,500s): group/member info may be stale until the cache expires.
 - **Shared items are split evenly** across all active members; there are no per-member overrides.
 - **A receipt image is required for a transaction** (the URL field is optional, but the OCR flow always provides it).
-- **LLM errors raise `ModelRetry`;** translation failures retry with shorter text chunks.
+- **LLM errors raise `ModelRetry`;** a failed translation is logged and the model translates the text itself, so a blocked translator never fails a scan.
 
 ---
 
