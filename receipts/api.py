@@ -1,3 +1,4 @@
+from asgiref.sync import sync_to_async
 from django.http import HttpRequest
 from django.utils import timezone
 from ninja import File, Router, UploadedFile
@@ -36,7 +37,7 @@ async def post_ocr_receipt(
     step reads ``list_price``.
     """
     scan = await read_receipt(file.read())
-    image_url = upload_receipt_image(file)
+    image_url = await sync_to_async(upload_receipt_image)(file)
     receipt, allocation = allocate_scan(scan)
     places = receipt.decimal_places
     return OCRReceiptPostOut(

@@ -60,7 +60,7 @@ settledown exposes a [Django Ninja](https://django-ninja.dev/) API under the `/a
 5. `receipts/allocation.py` does the money math in integer minor units.
    It resolves which items each line applies to from the printed numbers (a printed base amount or percentage), applies the lines in printed order by largest remainder, and reconciles the result against the printed amount due and tax lines.
 6. The output validator asks the model to read again only when a transcription cannot be read as money, and at most once more when it does not add up; the run returns the best attempt, not the last.
-7. The receipt image is uploaded to Cloudinary; on failure, it is uploaded to catbox.moe.
+7. The receipt image is uploaded to Cloudinary; on failure, it is uploaded to catbox.moe. The upload runs in the request's worker thread, so it never blocks the event loop.
 8. The API returns the items with `cost` set to what each line cost after every discount, plus shop names, tax %, the total paid, date, and image URL.
    A scan that does not reconcile allocates nothing (every `cost` is 0), so the app cannot file a guessed split; the review fields say why.
 

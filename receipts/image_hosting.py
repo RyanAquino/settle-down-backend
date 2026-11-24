@@ -20,21 +20,23 @@ def catbox_upload_file(file_obj: UploadedFile) -> str:
         files={"fileToUpload": file_obj},
         timeout=settings.UPSTREAM_HTTP_TIMEOUT,
     )
+    response.raise_for_status()
     return response.text.strip()
 
 
 def cloudinary_upload_file(file_obj: UploadedFile) -> str:
-    """Upload to Cloudinary and return the hosted file's HTTPS URL."""
+    """Upload to Cloudinary and return the hosted file's HTTPS URL.
+
+    The credentials go with each call instead of into the SDK's global config,
+    so uploads running in parallel threads share no mutable state.
+    """
     file_obj.seek(0)
-    cloudinary.config(
+    upload_result = cloudinary.uploader.upload(
+        file_obj,
         cloud_name=settings.CLOUDINARY_CLOUD_NAME,
         api_key=settings.CLOUDINARY_API_KEY,
         api_secret=settings.CLOUDINARY_API_SECRET,
-        secure=True,
-    )
-
-    upload_result = cloudinary.uploader.upload(
-        file_obj, timeout=settings.UPSTREAM_HTTP_TIMEOUT
+        timeout=settings.UPSTREAM_HTTP_TIMEOUT,
     )
     url: str = upload_result["secure_url"]
     return url

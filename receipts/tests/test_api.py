@@ -7,6 +7,7 @@ patched per test.
 """
 
 import logging
+import threading
 from datetime import UTC, datetime
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
@@ -197,6 +198,34 @@ class TestReceiptEndpoint:
         assert "falling back to catbox" in record.getMessage()
         assert record.exc_info[1].args == ("cloudinary down",)
 
+    def test_the_upload_runs_off_the_event_loop(self, client, ocr_agent):
+        threads = {}
+
+        async def read_on_the_loop(prompt, deps):
+            threads["read"] = threading.get_ident()
+            return SimpleNamespace(output=RECEIPT)
+
+        def upload_in_a_worker(file_obj):
+            threads["upload"] = threading.get_ident()
+            return "https://res.cloudinary.com/r.jpg"
+
+        ocr_agent.run.side_effect = read_on_the_loop
+        with (
+            patch(
+                "receipts.image_hosting.cloudinary_upload_file",
+                side_effect=upload_in_a_worker,
+            ),
+            patch("receipts.image_hosting.catbox_upload_file") as catbox,
+        ):
+            response = client.post(RECEIPT_URL, {"file": _upload()}, **AUTH)
+
+        assert response.status_code == 200
+        assert (
+            response.json()["receipt_image_url"] == "https://res.cloudinary.com/r.jpg"
+        )
+        catbox.assert_not_called()
+        assert threads["upload"] != threads["read"]
+
     def test_requires_a_file(self, client, ocr_agent):
         response = client.post(RECEIPT_URL, {}, **AUTH)
 
@@ -343,8 +372,16 @@ class TestFailedReads:
     def test_a_read_with_no_usable_attempt_is_an_error(self, client, ocr_agent):
         ocr_agent.run.side_effect = UnexpectedModelBehavior("Exceeded retries")
 
-        with pytest.raises(UnexpectedModelBehavior):
+        with (
+            patch("receipts.image_hosting.cloudinary_upload_file") as cloudinary,
+            patch("receipts.image_hosting.catbox_upload_file") as catbox,
+            pytest.raises(UnexpectedModelBehavior),
+        ):
             client.post(RECEIPT_URL, {"file": _upload()}, **AUTH)
+
+        # The photo is hosted only after a read, so a failed scan uploads nothing.
+        cloudinary.assert_not_called()
+        catbox.assert_not_called()
 
 
 ALLOCATIONS_URL = "/api/v1/receipts/allocations/"

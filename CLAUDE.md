@@ -61,6 +61,8 @@ Routes call the functions below them directly, map their errors to HTTP and buil
   If a later read fails outright, `read_receipt()` still answers with the best earlier attempt.
   `get_receipt_agent()` is an alternate OpenAI/LLM7 factory (`gpt-5-mini`) wrapped by `receipts/llm7.py` (`LLM7ChatModel`), a parsing workaround; don't delete it as dead code.
   The image is then hosted by `image_hosting.upload_receipt_image()` on Cloudinary, falling back to catbox.moe on any exception (logged with its traceback).
+  The SDK and `requests` are blocking, so the route awaits `sync_to_async(upload_receipt_image)`: Django's ASGI handler gives each request its own worker thread, and the upload runs there, off the event loop.
+  It stays after the read on purpose: a failed scan uploads nothing, and an upload already running in a thread cannot be cancelled (catbox uploads are public and cannot be deleted).
 - `/api/v1/receipts/allocations/` recalculates a scanned receipt with the items a person chose for each adjustment (the app's review step), through `services.recalculate_receipt()`; no model call.
   A choice that cannot be applied raises `ReceiptCorrectionError`, which the route turns into a 422.
   Only the allocation is guarded, so a fault while building the response (a pydantic `ValidationError` is a `ValueError`) stays a 500.
@@ -157,6 +159,7 @@ The mocked members endpoint returns exactly **Member 1 and Member 2** (`GROUP_ME
 - `test_ocr_validator.py` drives the real agent loop offline with a scripted `FunctionModel` and pins the number of model requests per scan.
 - `test_ocr_agent.py::TestWireSchema` captures what each provider path sends the model (via `httpx.MockTransport`) and asserts every transcribed field is required with no default; on the Gemini path a default would make it silently optional.
 - Each app's `tests/test_api.py` drives its routes through Django's test `Client` (URL conf, middleware, auth) with the outbound boundaries mocked.
+  A test that patches `cloudinary_upload_file` must patch `catbox_upload_file` too: the fallback catches every exception, including a failed assertion inside the Cloudinary mock, and would otherwise make a real catbox upload.
 
 pytest is configured in `pyproject.toml` (`DJANGO_SETTINGS_MODULE=settledown.settings`, `testpaths`, `-m "not live"`, strict markers/config).
 
