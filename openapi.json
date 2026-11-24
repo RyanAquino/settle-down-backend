@@ -212,7 +212,7 @@
             "description": "No Content"
           }
         },
-        "description": "File a receipt in its Settle Up group as one expense.\n\n204: Settle Up filed it. 422: no member owes anything, so there is nothing\nto split.",
+        "description": "File a receipt in its Settle Up group as one expense.\n\n204: Settle Up filed it. 422: no member owes anything, so there is nothing\nto split. 424: Settle Up refused it, so nothing was filed. 502: Settle Up\nfailed, so it may or may not have been filed.",
         "tags": [
           "settle-up"
         ],

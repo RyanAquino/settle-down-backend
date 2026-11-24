@@ -172,8 +172,6 @@ class TestCreateTransaction:
     def test_posts_to_the_group_with_auth_and_a_timeout(
         self, settle_up_client, mock_settleup
     ):
-        mock_settleup.requests.post.return_value.json.return_value = {"name": "tx-1"}
-
         result = settle_up_client.create_transaction(_payload())
 
         assert result == {"name": "tx-1"}

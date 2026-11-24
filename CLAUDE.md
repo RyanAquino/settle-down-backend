@@ -68,7 +68,7 @@ Routes call the functions below them directly, map their errors to HTTP and buil
   Only the allocation is guarded, so a fault while building the response (a pydantic `ValidationError` is a `ValueError`) stays a 500.
 - `/api/v1/settle-up/...` (`settle_up/api.py`) lists groups, lists members, and creates a transaction.
   All delegate to `SettleUpClient` (`settle_up/services.py`).
-  A transaction body with nothing to split (`NothingToSplitError`) is a 422.
+  The app deletes its draft on any 2xx from the transaction route, so a write Settle Up refuses (a 4xx, `SettleUpWriteError.refused`) is a 424 and one it fails (a 5xx) is a 502, never a 204; a body with nothing to split (`NothingToSplitError`) is a 422.
 
 Swagger UI is at `/api/docs` (no trailing slash; authorize with the `APP_AUTH` bearer token).
 

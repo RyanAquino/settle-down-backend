@@ -369,6 +369,8 @@ Create a new settlement transaction. Transactions are filed in **the group's cur
 The other answers carry a `detail` message:
 
 - `422`: the body is invalid, or no member owes anything at cent precision, so there is nothing to split.
+- `424`: Settle Up refused the transaction (for example an expired sign-in or a group the account no longer belongs to), so nothing was filed and it can be sent again.
+- `502`: Settle Up failed while filing it, so it may or may not have been filed; check the group before sending it again.
 
 **Example:**
 

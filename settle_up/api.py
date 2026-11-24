@@ -9,7 +9,7 @@ from settle_up.schemas import (
     SettleUpUserSchema,
     TransactionPostIn,
 )
-from settle_up.services import SettleUpClient
+from settle_up.services import SettleUpClient, SettleUpWriteError
 from settle_up.splitting import NothingToSplitError
 
 router = Router(tags=["settle-up"])
@@ -36,12 +36,15 @@ def post_settle_up_create_transaction(
     """File a receipt in its Settle Up group as one expense.
 
     204: Settle Up filed it. 422: no member owes anything, so there is nothing
-    to split.
+    to split. 424: Settle Up refused it, so nothing was filed. 502: Settle Up
+    failed, so it may or may not have been filed.
     """
     settle_up_client = SettleUpClient()
     try:
         settle_up_client.create_transaction(payload)
     except NothingToSplitError as error:
         raise HttpError(422, str(error)) from error
+    except SettleUpWriteError as error:
+        raise HttpError(424 if error.refused else 502, str(error)) from error
 
     return Status(204, None)

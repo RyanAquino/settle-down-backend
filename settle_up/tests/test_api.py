@@ -8,6 +8,8 @@ Only Settle Up itself is mocked, via ``mock_settleup``.
 import pytest
 from django.test import override_settings
 
+from settle_up.tests.conftest import firebase_answer
+
 TOKEN = "test-app-token"
 AUTH = {"HTTP_AUTHORIZATION": f"Bearer {TOKEN}"}
 
@@ -165,6 +167,35 @@ class TestSettleUpEndpoints:
         assert response.status_code == 422
         assert "Nothing to split" in response.json()["detail"]
         mock_settleup.requests.post.assert_not_called()
+
+    @pytest.mark.parametrize(
+        ("answer", "status"),
+        [
+            # Settle Up refused the write, so nothing was filed: the app keeps
+            # the draft and says Settle Up rejected it.
+            (firebase_answer(401, {"error": "Auth token is expired"}), 424),
+            (firebase_answer(403, {"error": "Permission denied"}), 424),
+            (firebase_answer(400, {"error": "Invalid data"}), 424),
+            # Settle Up failed: it may have filed it, so the app must not resend
+            # it blindly (a 5xx is "unconfirmed" to the app).
+            (firebase_answer(503, {"error": "Service unavailable"}), 502),
+        ],
+    )
+    def test_create_transaction_reports_a_write_settle_up_did_not_accept(
+        self, client, mock_settleup, answer, status
+    ):
+        mock_settleup.requests.post.return_value = answer
+
+        response = client.post(
+            TRANSACTIONS_URL,
+            {**LUNCH, "tax_percentage": 10, "total_amount": 3},
+            content_type="application/json",
+            **AUTH,
+        )
+
+        assert response.status_code == status
+        assert answer.json()["error"] in response.json()["detail"]
+        mock_settleup.requests.post.assert_called_once()
 
     def test_create_transaction_validates_the_payload(self, client, mock_settleup):
         response = client.post(

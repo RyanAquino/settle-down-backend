@@ -17,6 +17,23 @@ class SettleUpGroupNotFoundError(LookupError):
     """The requested Settle Up group does not exist (Firebase answered null)."""
 
 
+class SettleUpWriteError(RuntimeError):
+    """Settle Up answered a transaction write with an error status.
+
+    A 4xx means Firebase refused the write, so nothing was filed; after a 5xx
+    it may or may not have been.
+    """
+
+    def __init__(self, status_code: int, body: str) -> None:
+        super().__init__(f"Settle Up answered {status_code}: {body.strip()[:200]}")
+        self.status_code = status_code
+
+    @property
+    def refused(self) -> bool:
+        """Whether Settle Up refused the write, so nothing was filed."""
+        return 400 <= self.status_code < 500
+
+
 class SettleUpClient:
     def __init__(self) -> None:
         cache_key = f"{settings.SETTLE_UP_USER}_token"
@@ -206,6 +223,11 @@ class SettleUpClient:
             params=self.auth_params,
             timeout=settings.UPSTREAM_HTTP_TIMEOUT,
         )
+        # Firebase answers a refused write (an expired token, a lost group
+        # membership, a payload its rules reject) with a JSON error body that
+        # parses as cleanly as a success, so the status is what tells them apart.
+        if not response.ok:
+            raise SettleUpWriteError(response.status_code, response.text)
 
         result: dict[str, Any] = response.json()
         return result
