@@ -1,3 +1,6 @@
+# Patterns match from the build-context root: a bare `__pycache__/` only
+# excludes the top-level one, so anything that can sit at any depth needs `**/`.
+
 .venv/
 venv/
 
@@ -8,8 +11,8 @@ venv/
 .git/
 .gitignore
 
-__pycache__/
-*.py[cod]
+**/__pycache__/
+**/*.py[cod]
 *.egg-info/
 .ruff_cache/
 .mypy_cache/
@@ -20,13 +23,21 @@ __pycache__/
 db.sqlite3
 media/
 
+# A real receipt photo for the live OCR tests (gitignored).
+receipts/tests/fixtures/receipt.*
+
+# Local editor, agent and planning files (untracked or gitignored).
 .idea/
 .vscode/
 .claude/
+.agents/
+.mcp.json
+skills-lock.json
+docs/
 
 Dockerfile
 .dockerignore
 docker-compose.yml
 
-*.log
-.DS_Store
+**/*.log
+**/.DS_Store
