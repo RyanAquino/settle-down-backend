@@ -123,9 +123,6 @@ class Allocation:
     adjustments: tuple[AllocatedAdjustment, ...]
 
 
-# ----------------------------------------------------------------- units ----
-
-
 def _fraction_digits(amount: float) -> int:
     exponent = Decimal(str(amount)).normalize().as_tuple().exponent
     return -exponent if isinstance(exponent, int) and exponent < 0 else 0
@@ -177,9 +174,6 @@ def _rate(value: float | None) -> Fraction | None:
     if value is None or value < 0:
         return None
     return Fraction(Decimal(str(value)))
-
-
-# ------------------------------------------------------------ conversion ----
 
 
 def printed_receipt(scan: ReceiptScan) -> PrintedReceipt:
@@ -291,9 +285,6 @@ def printed_receipt(scan: ReceiptScan) -> PrintedReceipt:
         amount_due=minor(scan.amount_due),
         decimal_places=places,
     )
-
-
-# ------------------------------------------------------------ allocation ----
 
 
 def split_proportionally(amount: int, weights: Mapping[int, int]) -> dict[int, int]:
@@ -548,9 +539,6 @@ def _apply(
     for order, share in allocations.items():
         nets[order] += sign * share
     return allocations
-
-
-# -------------------------------------------------------- reconciliation ----
 
 
 def _display_rate(tax_lines: Sequence[TaxLine]) -> Fraction | None:
@@ -1015,7 +1003,6 @@ def _reconcile(
             for order, share in shares.items():
                 nets[order] += share
     elif reading == "before points":
-        # The model copied the total printed before the points were taken off.
         total = due - points
 
     if difference := _bases_disagree(receipt.tax_lines, subtotal, total, points):

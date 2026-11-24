@@ -7,7 +7,6 @@ on:
     - cron: "41 18 * * *" # 03:41 JST
   workflow_dispatch:
 
-# Never run two nightly batches at once (e.g. a manual dispatch during the cron).
 concurrency:
   group: ${{ github.workflow }}
   cancel-in-progress: false

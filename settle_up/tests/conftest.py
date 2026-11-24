@@ -17,7 +17,7 @@ GROUP_MEMBERS = {
     "Member 2": {"name": "Member 2"},
 }
 
-# Stubbed SettleUp REST response for `groups/{group_id}.json` — the group
+# Stubbed SettleUp REST response for `groups/{group_id}.json`: the group
 # document that carries the group's currency. The default is JPY so the
 # long-standing payload-pinning tests keep seeing the currency they pinned.
 GROUP_INFO = {"name": "Group A", "convertedToCurrency": "JPY"}
@@ -47,13 +47,10 @@ def mock_settleup():
         patch("settle_up.services.requests") as mock_requests,
         patch("settle_up.services.cache") as mock_cache,
     ):
-        # Force a cache miss so the (mocked) login and REST paths actually run.
         mock_cache.get.return_value = None
 
-        # No real Firebase login - return fake credentials.
         mock_firebase_auth.sign_in_with_email_and_password.return_value = FAKE_CREDS
 
-        # Stub the SettleUp REST members endpoint.
         mock_requests.get.return_value.json.return_value = GROUP_MEMBERS
 
         # Route group-document fetches to a dedicated response; every other URL
@@ -84,7 +81,7 @@ def mock_settleup():
 def settle_up_client(mock_settleup):
     """A ready-to-use ``SettleUpClient`` with all boundaries mocked.
 
-    Reusable across the whole transaction suite — request a ``settle_up_client``
+    Reusable across the whole transaction suite: request a ``settle_up_client``
     argument in any test to get a client that performs no real login, network,
     or Redis traffic.
     """

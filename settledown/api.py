@@ -25,7 +25,5 @@ class GlobalAuth(HttpBearer):
 
 api = NinjaAPI(auth=GlobalAuth(), docs=Swagger(settings={"persistAuthorization": True}))
 
-# Each app keeps its routes on a Router in its own api.py; this package only
-# mounts them. The dotted path imports each router when it is mounted.
 api.add_router("/v1/receipts/", "receipts.api.router")
 api.add_router("/v1/settle-up/", "settle_up.api.router")

@@ -1,7 +1,7 @@
 """Group-document fetching and the currency it carries.
 
 The Settle Up group document (``groups/{group_id}.json``) is the source of
-``convertedToCurrency`` — the currency the group is configured in
+``convertedToCurrency``, the currency the group is configured in
 (https://api.settleup.io/entities/). Every transaction is filed in it.
 """
 

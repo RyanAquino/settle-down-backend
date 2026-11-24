@@ -63,7 +63,7 @@ class TestTransaction:
             tax_percentage=10,
             total_amount=200,
             split_receipt_items=[100],  # 50 per member + 5(10% tax) = 55
-            group_id="Group A",  # 2 member group
+            group_id="Group A",
         )
         assert result == {"Member 1": 150.0, "Member 2": 50.0}
 
@@ -87,7 +87,7 @@ class TestTransaction:
             tax_percentage=10,
             total_amount=198,
             split_receipt_items=[90],
-            group_id="Group A",  # 2 member group
+            group_id="Group A",
         )
         assert result == {"Member 1": 148.5, "Member 2": 49.5}
 
@@ -108,7 +108,7 @@ class TestTransaction:
             ],
             tax_percentage=10,
             total_amount=200,
-            group_id="Group A",  # 2 member group
+            group_id="Group A",
         )
         assert result == {"Member 1": 100.0, "Member 2": 100.0}
 

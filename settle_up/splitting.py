@@ -36,13 +36,8 @@ def compute_weights(shares: Sequence[float]) -> list[int]:
     shares: list of member shares (e.g., [36, 64])
     returns: list of weights (e.g., [9, 16])
     """
-    # Step 1: convert shares to integers if they aren't already
     scaled = [round(s * 100) for s in shares]
-
-    # Step 2: find GCD of all shares
     gcd_all = reduce(math.gcd, scaled)
-
-    # Step 3: divide each share by the GCD to get weights
     return [s // gcd_all for s in scaled]
 
 
@@ -62,21 +57,17 @@ def compute_member_totals(
     if split_receipt_items is None:
         split_receipt_items = []
 
-    # Calculate tax
     member_receipt_item_total_map: defaultdict[str, float] = defaultdict(float)
     tax_rate = tax_percentage / 100
 
-    # Total cost per member
     for item in receipt_items:
         member_receipt_item_total_map[item.member_id] += item.cost
 
-    # Tax per consolidated items member
     member_receipt_tax_map = {
         member_id: round(item_amt * tax_rate, 2)
         for member_id, item_amt in member_receipt_item_total_map.items()
     }
 
-    # Shared tax for total verification
     shared_tax = 0.0
     if split_receipt_items:
         for total_amt in split_receipt_items:
@@ -98,7 +89,6 @@ def compute_member_totals(
                 member_id
             ]
 
-    # Shared item split cost + tax if applicable
     for shared_item in split_receipt_items:
         for member in members:
             member_id = member["id"]

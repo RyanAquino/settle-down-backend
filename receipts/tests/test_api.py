@@ -123,7 +123,6 @@ class TestReceiptEndpoint:
             "receipt_date": "2026-05-30T12:34:56",
             "receipt_image_url": "https://res.cloudinary.com/r.jpg",
         }
-        # What the review step reads.
         assert body["receipt_items"][0]["list_price"] == 300.0
         assert {
             key: body[key]
@@ -154,7 +153,6 @@ class TestReceiptEndpoint:
         assert [item["english_name"] for item in data["receipt_items"]] == ["Onigiri"]
         catbox.assert_not_called()
 
-        # The image bytes reach the model as binary content.
         prompt = ocr_agent.run.await_args.args[0]
         images = [part for part in prompt if isinstance(part, BinaryContent)]
         assert [image.data for image in images] == [b"jpeg-bytes"]

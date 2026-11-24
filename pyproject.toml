@@ -43,7 +43,6 @@ dev = [
     "types-requests>=2.33.0.20261030",
 ]
 
-# ---------------------------------------------------------------- pytest ----
 [tool.pytest.ini_options]
 DJANGO_SETTINGS_MODULE = "settledown.settings"
 python_files = ["test_*.py"]
@@ -60,7 +59,6 @@ filterwarnings = [
     "error",
 ]
 
-# -------------------------------------------------------------- coverage ----
 [tool.coverage.run]
 source = ["receipts", "settle_up", "settledown"]
 branch = true
@@ -72,7 +70,6 @@ show_missing = true
 skip_covered = true
 exclude_also = ["if TYPE_CHECKING:"]
 
-# ------------------------------------------------------------------ ruff ----
 [tool.ruff]
 
 [tool.ruff.lint]
@@ -116,7 +113,6 @@ known-first-party = ["receipts", "settle_up", "settledown"]
 [tool.ruff.lint.flake8-tidy-imports]
 ban-relative-imports = "all"
 
-# ------------------------------------------------------------------ mypy ----
 [tool.mypy]
 plugins = ["mypy_django_plugin.main", "pydantic.mypy"]
 check_untyped_defs = true
@@ -153,7 +149,6 @@ django_settings_module = "settledown.settings"
 init_forbid_extra = true
 init_typed = true
 
-# --------------------------------------------------------- import-linter ----
 [tool.importlinter]
 root_packages = ["receipts", "settle_up", "settledown"]
 include_external_packages = true
@@ -212,7 +207,6 @@ forbidden_modules = [
     "pydantic_ai",
 ]
 
-# ---------------------------------------------------------------- deptry ----
 [tool.deptry]
 known_first_party = ["receipts", "settle_up", "settledown"]
 # Test modules may import dev-only packages (pytest).

@@ -22,12 +22,10 @@ class LLM7ChatModel(OpenAIChatModel):
                 "Invalid response from OpenAI chat completions endpoint, expected JSON data"
             )
 
-        # Ensure choice.index is always an int.
         for i, choice in enumerate(response.choices):
             if getattr(choice, "index", None) is None:
                 choice.index = i
 
-        # Fallback: if created is missing
         if not response.created:
             response.created = int(datetime.now(UTC).timestamp())
 
@@ -38,5 +36,4 @@ class LLM7ChatModel(OpenAIChatModel):
                 f"Invalid response from OpenAI chat completions endpoint: {e}"
             ) from e
 
-        # Call the parent logic after patching.
         return super()._process_response(response)

@@ -12,7 +12,6 @@ from django.test import override_settings
 
 TOKEN = "test-app-token"
 URL = "/api/v1/receipts/allocations/"
-# The smallest correction the route accepts: one item and nothing to allocate.
 BODY = {
     "decimal_places": 0,
     "receipt_items": [{"item_order": 1, "list_price": 100}],

@@ -1,7 +1,7 @@
 """Tests for the receipt-agent factories.
 
 Both factories build a pydantic-ai ``Agent`` from a provider-specific model via
-the shared ``_build_agent`` helper. These tests exercise the assembly only — no
+the shared ``_build_agent`` helper. These tests exercise the assembly only: no
 network is hit, since constructing the OpenAI/OpenRouter clients with a dummy
 key does not make a request. Dummy keys are required because the factories
 construct the client eagerly (a missing key would raise).
@@ -55,7 +55,6 @@ def _clear_agent_caches():
 def test_default_factory_uses_llm7_model():
     agent = get_receipt_agent()
     assert isinstance(agent, Agent)
-    # The existing path keeps the LLM7 parsing workaround.
     assert isinstance(agent.model, LLM7ChatModel)
     assert agent.model.model_name == "gpt-5-mini"
 
@@ -84,7 +83,6 @@ def test_openrouter_model_id_is_configurable():
 
 @override_settings(LLM_API_KEY="test-key", OPENROUTER_API_KEY="test-key")
 def test_both_factories_register_translate_tool():
-    # The shared _build_agent wires the translate tool onto both providers.
     for factory in (get_receipt_agent, get_openrouter_receipt_agent):
         agent = factory()
         assert "translate_jp_to_en_text" in agent._function_toolset.tools

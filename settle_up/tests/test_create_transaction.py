@@ -67,7 +67,7 @@ class TestCreateTransactionPayload:
 
 class TestCurrencyFollowsGroup:
     """currencyCode/exchangeRates come from the group document, not a JPY
-    hardcode — a Taiwan group files its receipts in TWD."""
+    hardcode: a Taiwan group files its receipts in TWD."""
 
     def test_transaction_uses_group_currency(self, settle_up_client, mock_settleup):
         mock_settleup.group_json["convertedToCurrency"] = "TWD"
