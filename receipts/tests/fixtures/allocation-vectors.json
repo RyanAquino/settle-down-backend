@@ -1815,5 +1815,25 @@
       "difference": 0,
       "scopes": [["assumed", [1, 2, 3]]]
     }
+  },
+  {
+    "name": "points_equal_to_tax_printed_without_a_rate",
+    "why": "1,100, 100 of points and a tax line of 100 with no rate: tax added on top of the 1,000 left (1,100 paid), or tax inside the price with the points paid after it and the total before them read as the amount due (1,000 paid). Points equal to the tax leave nothing to tell the two apart, with or without a printed rate, so neither is taken.",
+    "decimal_places": 0,
+    "items": [1100],
+    "adjustments": [
+      {"label": "ポイント値引", "kind": "points", "amount": 100, "percentage": null, "item_orders": [], "eligible_subtotal": null}
+    ],
+    "tax_lines": [[null, null, 100]],
+    "amount_due": 1100,
+    "expected": {
+      "status": "mismatch",
+      "costs": [0],
+      "total": 1100,
+      "tax_percentage": 0,
+      "tax_added": false,
+      "difference": 100,
+      "scopes": [["verified", [1]]]
+    }
   }
 ]

@@ -705,8 +705,9 @@ def _reading(
     - before points: the amount due was read before points were taken off.
 
     "before points" repairs a misread amount due, so it is never taken when
-    tax added on top explains the amount due as read: points equal to that
-    tax fit both, and nothing printed tells them apart.
+    tax added on top, printed with a rate or without, explains the amount due
+    as read: points equal to that tax fit both, and nothing printed tells
+    them apart, so neither is.
     """
     complete = _complete_tax_lines(tax_lines)
     includes_tax = _prices_include_tax(
@@ -742,10 +743,12 @@ def _reading(
         and subtotal
         and subtotal + unrated_tax == due
     ):
-        return "spread"
+        return None if before_points else "spread"
     if includes_tax is False and complete is not None and subtotal + rated_tax == due:
         return "spread by rate"
-    if before_points and (includes_tax is True or due - subtotal != rated_tax):
+    if before_points and (
+        includes_tax is True or due - subtotal not in (rated_tax, unrated_tax)
+    ):
         return "before points"
     return None
 
