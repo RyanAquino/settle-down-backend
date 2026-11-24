@@ -7,10 +7,13 @@ its result is checked against a restatement of the installed app's own check.
 """
 
 import time
+import tracemalloc
 from fractions import Fraction
+from unittest.mock import patch
 
 import pytest
 
+from receipts import allocation
 from receipts.allocation import (
     MAX_ITEMS,
     Adjustment,
@@ -306,6 +309,46 @@ class TestScopeEdges:
         assert result.status == "reconciled"
         assert result.tax_added
         assert result.tax_rate == Fraction(33, 4)
+
+
+class TestPerRateBases:
+    """When prices include tax, some items must make up each printed rate's base."""
+
+    def test_one_search_covers_every_rate(self):
+        lines = [
+            TaxLine(rate=Fraction(5), taxable_amount=1050, tax_amount=50),
+            TaxLine(rate=Fraction(8), taxable_amount=1080, tax_amount=80),
+            TaxLine(rate=Fraction(10), taxable_amount=2200, tax_amount=200),
+        ]
+
+        with patch.object(
+            allocation, "_reachable_sums", wraps=allocation._reachable_sums
+        ) as search:
+            result = allocate(_receipt([1050, 1080, 2200], [], 4330, lines))
+
+        assert result.status == "reconciled"
+        # Two smaller bases to check, one pass over the items.
+        assert search.call_count == 1
+
+    def test_an_item_far_above_every_base_costs_no_memory(self):
+        big = 1_100_000_000
+        lines = [
+            TaxLine(rate=Fraction(8), taxable_amount=1080, tax_amount=80),
+            TaxLine(
+                rate=Fraction(10), taxable_amount=2200 + big, tax_amount=200 + big // 11
+            ),
+        ]
+
+        tracemalloc.start()
+        try:
+            result = allocate(_receipt([1080, 2200, big], [], 3280 + big, lines))
+            _, peak = tracemalloc.get_traced_memory()
+        finally:
+            tracemalloc.stop()
+
+        assert result.status == "reconciled"
+        # Shifting the search by that item would build a number of over 100 MB.
+        assert peak < 8 * 1024 * 1024
 
 
 class TestCorrectedReceipt:

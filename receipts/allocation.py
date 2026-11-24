@@ -373,18 +373,26 @@ def _unique_subset(
     return tuple(order for position, order in enumerate(orders) if position in chosen)
 
 
-def _nearest_reachable(weights: Iterable[int], target: int) -> int | None:
-    """How far ``target`` is from the nearest sum of some of ``weights``.
+def _reachable_sums(weights: Iterable[int], limit: int) -> int:
+    """Every sum of some of ``weights`` up to ``limit``: bit n is set when one is n.
 
-    None when ``target`` is too large to search.
+    Weights are not negative, so one above ``limit`` is in no such sum; it is
+    skipped rather than shifted into a number as large as itself.
     """
-    if target > _MAX_GROUP_TARGET:
-        return None
-    # Bit n of ``reachable`` is set when some of the weights sum to n.
     reachable = 1
-    mask = (1 << (2 * target + 1)) - 1
+    mask = (1 << (limit + 1)) - 1
     for weight in weights:
-        reachable |= (reachable << weight) & mask
+        if weight <= limit:
+            reachable |= (reachable << weight) & mask
+    return reachable
+
+
+def _nearest_reachable(reachable: int, target: int) -> int:
+    """How far ``target`` is from the nearest sum set in ``reachable``.
+
+    ``reachable`` must hold every sum up to at least twice the target. A sum
+    beyond that is farther than the empty sum, 0, so it never decides.
+    """
     # The highest sum at or below the target (the empty set always reaches 0),
     # and the lowest at or above it.
     below = target - ((reachable & ((1 << (target + 1)) - 1)).bit_length() - 1)
@@ -805,9 +813,19 @@ def _rate_groups_gap(
             targets = with_tax
         else:
             return 0
-    for target in sorted(targets.values())[:-1]:
-        distance = _nearest_reachable(costs.values(), target)
-        if distance is not None and distance > tolerance:
+    # A base too large to search is skipped. One search, as wide as twice the
+    # largest base left, answers every one of them.
+    searched = [
+        target
+        for target in sorted(targets.values())[:-1]
+        if target <= _MAX_GROUP_TARGET
+    ]
+    if not searched:
+        return 0
+    reachable = _reachable_sums(costs.values(), 2 * searched[-1])
+    for target in searched:
+        distance = _nearest_reachable(reachable, target)
+        if distance > tolerance:
             return distance
     return 0
 
