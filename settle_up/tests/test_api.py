@@ -197,6 +197,15 @@ class TestSettleUpEndpoints:
             {"user_receipt_items": [{"member_id": "Member 1", "cost": 0}]},
             # Half a cent each for the two members: nothing at cent precision.
             {"user_receipt_items": [], "split_receipt_items": [0.01]},
+            # A negative tax that the tax check adds makes every share negative.
+            {
+                "tax_percentage": -150,
+                "total_amount": -100,
+                "user_receipt_items": [
+                    {"member_id": "Member 1", "cost": 100},
+                    {"member_id": "Member 2", "cost": 100},
+                ],
+            },
         ],
     )
     def test_create_transaction_with_nothing_to_split_is_refused(

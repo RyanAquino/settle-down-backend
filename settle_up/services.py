@@ -10,7 +10,12 @@ from django.core.cache import cache
 from settle_up import firebase_auth
 from settle_up.dto import SettleUpGroup, SettleUpMember
 from settle_up.schemas import TransactionPostIn
-from settle_up.splitting import MemberCost, compute_member_totals, compute_weights
+from settle_up.splitting import (
+    MemberCost,
+    NothingToSplitError,
+    compute_member_totals,
+    compute_weights,
+)
 
 
 class SettleUpGroupNotFoundError(LookupError):
@@ -203,6 +208,10 @@ class SettleUpClient:
             )
             if total_amt > 0
         ]
+        # Shares can all be negative (a negative tax the tax check adds):
+        # never file an expense that no one owes.
+        if not for_whom:
+            raise NothingToSplitError("Nothing to split: no member owes anything.")
 
         # Strict: never file money under a guessed currency. The identity
         # exchange rate is correct because the expense IS denominated in the
