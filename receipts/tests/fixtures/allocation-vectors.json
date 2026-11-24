@@ -1775,5 +1775,25 @@
       "difference": 57,
       "scopes": []
     }
+  },
+  {
+    "name": "tax_total_read_as_a_surcharge_under_an_item",
+    "why": "外税 at 10% (120 on 1,200) whose tax was also listed as a surcharge under the second item: it repeats the tax line exactly while the base adds up to the items without it, so it is the tax read twice whichever item it was read under, and a person removes it rather than the second item's owner paying all of the tax.",
+    "decimal_places": 0,
+    "items": [1000, 200],
+    "adjustments": [
+      {"label": "消費税", "kind": "surcharge", "amount": 120, "percentage": null, "item_orders": [2], "eligible_subtotal": null}
+    ],
+    "tax_lines": [[10, 1200, 120]],
+    "amount_due": 1320,
+    "expected": {
+      "status": "needs_review",
+      "costs": [0, 0],
+      "total": 1320,
+      "tax_percentage": 10,
+      "tax_added": false,
+      "difference": 0,
+      "scopes": [["unresolved", [2]]]
+    }
   }
 ]

@@ -570,6 +570,59 @@ class TestCorrections:
             {**result, "tax_percentage": body["tax_percentage"]}
         )
 
+    def test_a_line_that_repeats_the_tax_must_be_removed(self, client, ocr_agent):
+        body = self._review(client, ocr_agent, "tax_total_read_as_a_surcharge")
+        adjustments = body["adjustments"]
+        adjustments[0]["item_orders"] = [1, 2]
+
+        response = self._post(client, _correction(body, adjustments=adjustments))
+
+        # No choice of items can settle the tax read a second time: the
+        # answer says what will, rather than asking for items again.
+        assert response.status_code == 422
+        assert response.json()["detail"] == (
+            "'消費税' is the printed tax read a second time: remove it from the receipt."
+        )
+        removed = self._post(client, _correction(body, adjustments=[]))
+        assert removed.status_code == 200
+        assert removed.json()["reconciliation"]["status"] == "reconciled"
+
+    def test_a_surcharge_the_receipt_needs_keeps_the_items_chosen(
+        self, client, ocr_agent
+    ):
+        # A fee left out of the tax base that happens to equal the tax: the
+        # receipt does not add up without it, so it is not the tax read twice.
+        fee = {
+            "decimal_places": 0,
+            "items": [1000],
+            "adjustments": [
+                {
+                    "label": "手数料",
+                    "kind": "surcharge",
+                    "amount": 100,
+                    "percentage": None,
+                    "item_orders": [],
+                    "eligible_subtotal": None,
+                }
+            ],
+            "tax_lines": [[10, 1000, 100]],
+            "amount_due": 1200,
+        }
+        body = _scan_response(client, ocr_agent, scans.scan(fee))
+        adjustments = body["adjustments"]
+        adjustments[0]["item_orders"] = [1]
+
+        response = self._post(client, _correction(body, adjustments=adjustments))
+
+        assert response.status_code == 200
+        result = response.json()
+        # The choice stands instead of coming back unresolved. No reading
+        # covers a fee outside the tax base, so the difference shows.
+        assert [
+            (entry["status"], entry["item_orders"]) for entry in result["adjustments"]
+        ] == [("verified", [1])]
+        assert result["reconciliation"] == {"status": "mismatch", "difference": 100.0}
+
     def test_a_scan_posted_back_unchanged_gives_the_same_money(self, client, ocr_agent):
         body = self._review(client, ocr_agent, "sugi")
 

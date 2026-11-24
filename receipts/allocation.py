@@ -879,8 +879,8 @@ def _tax_read_as_surcharge(
     """The surcharge that repeats the printed tax lines, if one does.
 
     Tax added on top is copied into the tax lines; a surcharge for exactly the
-    printed tax, on no particular items, while the bases add up to the items
-    without it, is that tax read a second time.
+    printed tax while the bases add up to the items without it is that tax
+    read a second time, whichever items it was read under.
     """
     complete = _complete_tax_lines(tax_lines)
     if complete is None:
@@ -902,7 +902,6 @@ def _tax_read_as_surcharge(
             adjustment.kind == "surcharge"
             and adjustment.percentage is None
             and adjustment.eligible_subtotal is None
-            and not adjustment.item_orders
             and adjustment.amount == tax
             and bases == subtotal - adjustment.amount
         ):
@@ -945,7 +944,8 @@ def allocate(
 
     ``scopes`` replaces scope resolution with one chosen scope per adjustment,
     for a person correcting the receipt. Each chosen scope must name existing
-    items that can absorb the adjustment, or ``ValueError`` is raised.
+    items that can absorb the adjustment, or ``ValueError`` is raised; so is a
+    surcharge that is the printed tax read a second time.
     """
     if scopes is not None and len(scopes) != len(receipt.adjustments):
         raise ValueError("Choose exactly one scope for every adjustment.")
@@ -974,7 +974,7 @@ def allocate(
             item_specific.update(scope)
         allocations = _apply(adjustment, scope, nets)
         allocated.append(AllocatedAdjustment(adjustment, status, scope, allocations))
-    return _reconcile(receipt, prices, nets, allocated, budget)
+    return _reconcile(receipt, prices, nets, allocated, budget, scopes is not None)
 
 
 def _reconcile(
@@ -983,7 +983,15 @@ def _reconcile(
     nets: dict[int, int],
     allocated: list[AllocatedAdjustment],
     budget: _Budget,
+    chosen: bool,
 ) -> Allocation:
+    """Reconcile the allocated items with the printed totals.
+
+    ``chosen`` says a person chose every adjustment's items. A surcharge that
+    repeats the printed tax then raises ``ValueError`` when the receipt adds
+    up without it, since no choice of items can settle it; otherwise the
+    choice stands.
+    """
     due = receipt.amount_due
     display_rate = _display_rate(receipt.tax_lines)
 
@@ -1025,9 +1033,16 @@ def _reconcile(
     if (
         repeated := _tax_read_as_surcharge(receipt.tax_lines, allocated, subtotal)
     ) is not None:
-        entries = list(allocated)
-        entries[repeated] = _unresolve(entries[repeated])
-        return outcome("needs_review", entries)
+        line = allocated[repeated].adjustment
+        if not chosen:
+            entries = list(allocated)
+            entries[repeated] = _unresolve(entries[repeated])
+            return outcome("needs_review", entries)
+        if _reading(receipt.tax_lines, subtotal - line.amount, due, points):
+            raise ValueError(
+                f"'{line.label}' is the printed tax read a second time: "
+                "remove it from the receipt."
+            )
 
     reading = _reading(receipt.tax_lines, subtotal, due, points)
     total, tax_added = due, False

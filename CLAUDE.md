@@ -94,7 +94,7 @@ The normative rules are in its module docstring and pinned by `receipts/tests/fi
   Printed tax the app cannot add itself (no rate printed, or several rates whose printed bases single out their items) is spread into those items' costs.
   Printed tax lines that say the prices include or exclude tax rule out the readings that contradict them, including a rate and tax printed without a base, read against the items.
   When prices include tax and every rate prints its base, some items must make up each base (one unit of slack per line spread over several items); if none do, lines placed on the model's word go back to review.
-  A surcharge that repeats the printed tax total is tax read twice and goes to review.
+  A surcharge that repeats the printed tax total is tax read twice and goes to review, whatever items the model read it under; when a person then chooses its items and the receipt adds up without it, the correction is a 422 asking them to remove it, since no choice of items can settle it.
 - **Bounded work**: exact searches over item sets share one step budget per allocation (`_SEARCH_STEPS`) and give up by failing closed; the per-rate base check builds one bitset per allocation, at most `2 * _MAX_GROUP_TARGET` bits wide, and skips any item larger than it; amounts and line counts are capped (`MAX_AMOUNT`, `MAX_ITEMS`, ...), and the corrections schema caps its lists, so a crafted body cannot tie up a worker.
 - **Fail closed**: `needs_review` or `mismatch` allocates nothing and every `cost` is 0, which the installed app's check always rejects (it refuses a subtotal of 0).
   Don't return printed prices there: they can add up to a misread total (the subtotal before a coupon) and would be filed as is.
