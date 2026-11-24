@@ -149,9 +149,11 @@ def _build_agent(model: Model) -> Agent[ScanAttempts, ReceiptScan]:
     async def translate_jp_to_en_text(text: str) -> str:
         """Translate Japanese text to English text."""
 
-        translator = Translator()
         try:
-            text_result = await translator.translate(text, dest="en")
+            # The Translator owns an HTTP client; leaving the block closes it,
+            # or every call would leave its connection open.
+            async with Translator() as translator:
+                text_result = await translator.translate(text, dest="en")
         except Exception as exc:
             # googletrans scrapes an unofficial endpoint and fails in many ways;
             # every one of them is worth a retry with a smaller input.

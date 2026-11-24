@@ -10,7 +10,7 @@ construct the client eagerly (a missing key would raise).
 import asyncio
 import json
 from types import SimpleNamespace
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import httpx
 import pytest
@@ -98,27 +98,36 @@ def _translate_tool():
     return agent._function_toolset.tools["translate_jp_to_en_text"].function
 
 
+def _translator(translate):
+    """A googletrans Translator: it owns an HTTP client that ``async with`` closes."""
+    translator = MagicMock()
+    translator.__aenter__.return_value = translator
+    translator.translate = translate
+    return translator
+
+
 @override_settings(OPENROUTER_API_KEY="test-key")
 def test_translate_tool_returns_the_english_text():
-    with patch("receipts.ocr.Translator") as translator:
-        translator.return_value.translate = AsyncMock(
-            return_value=SimpleNamespace(text="rice ball")
-        )
+    translator = _translator(AsyncMock(return_value=SimpleNamespace(text="rice ball")))
+    with patch("receipts.ocr.Translator", return_value=translator):
         result = asyncio.run(_translate_tool()("おにぎり"))
 
     assert result == "rice ball"
-    translator.return_value.translate.assert_awaited_once_with("おにぎり", dest="en")
+    translator.translate.assert_awaited_once_with("おにぎり", dest="en")
+    translator.__aexit__.assert_awaited_once()
 
 
 @override_settings(OPENROUTER_API_KEY="test-key")
 def test_translate_tool_asks_the_model_to_retry_on_failure():
-    with patch("receipts.ocr.Translator") as translator:
-        translator.return_value.translate = AsyncMock(side_effect=OSError("blocked"))
-
-        with pytest.raises(ModelRetry, match="shorter chunk") as exc:
-            asyncio.run(_translate_tool()("おにぎり"))
+    translator = _translator(AsyncMock(side_effect=OSError("blocked")))
+    with (
+        patch("receipts.ocr.Translator", return_value=translator),
+        pytest.raises(ModelRetry, match="shorter chunk") as exc,
+    ):
+        asyncio.run(_translate_tool()("おにぎり"))
 
     assert isinstance(exc.value.__cause__, OSError)
+    translator.__aexit__.assert_awaited_once()
 
 
 class _ChatCompletions:
