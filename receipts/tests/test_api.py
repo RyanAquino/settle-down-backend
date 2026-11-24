@@ -455,6 +455,101 @@ def _correction(body, **changes):
     }
 
 
+CENTS = [vector for vector in scans.VECTORS if vector["decimal_places"] == 2]
+
+
+class TestCents:
+    """Every money field of a scan and its correction is in currency units.
+
+    At 0 decimal places a field left in minor units looks right, so these
+    receipts are in cents; expected values are the printed amounts, or shares
+    worked out by hand.
+    """
+
+    @pytest.mark.parametrize("vector", CENTS, ids=[v["name"] for v in CENTS])
+    def test_printed_amounts_come_back_as_printed(self, client, ocr_agent, vector):
+        body = _scan_response(client, ocr_agent, scans.scan(vector))
+
+        assert [item["list_price"] for item in body["receipt_items"]] == (
+            vector["items"]
+        )
+        assert [
+            [line["rate"], line["taxable_amount"], line["tax_amount"]]
+            for line in body["tax_lines"]
+        ] == vector["tax_lines"]
+        assert [
+            [entry["amount"], entry["percentage"], entry["eligible_subtotal"]]
+            for entry in body["adjustments"]
+        ] == [
+            [entry["amount"], entry["percentage"], entry["eligible_subtotal"]]
+            for entry in vector["adjustments"]
+        ]
+        assert body["reconciliation"]["difference"] == (
+            vector["expected"]["difference"]
+        )
+        if all(entry["item_orders"] for entry in body["adjustments"]):
+            response = client.post(
+                ALLOCATIONS_URL,
+                _correction(body),
+                content_type="application/json",
+                **AUTH,
+            )
+            recalculated = response.json()
+            assert [item["list_price"] for item in recalculated["receipt_items"]] == (
+                vector["items"]
+            )
+            assert [item["cost"] for item in recalculated["receipt_items"]] == [
+                item["cost"] for item in body["receipt_items"]
+            ]
+            assert recalculated["reconciliation"] == body["reconciliation"]
+
+    def test_shares_are_in_currency_units(self, client, ocr_agent):
+        body = _scan_response(
+            client, ocr_agent, scans.scan(scans.vector("coupon_before_tax_in_cents"))
+        )
+
+        # 2.50 over 12.99, 7.49 and 5.00 by largest remainder: 1.2745, 0.7349
+        # and 0.4906, with the leftover cent to the largest remainder.
+        assert body["adjustments"][0]["allocations"] == [
+            {"item_order": 1, "amount": 1.27},
+            {"item_order": 2, "amount": 0.74},
+            {"item_order": 3, "amount": 0.49},
+        ]
+        assert [item["discount"] for item in body["receipt_items"]] == [
+            1.27,
+            0.74,
+            0.49,
+        ]
+
+    def test_a_printed_base_comes_back_as_printed(self, client, ocr_agent):
+        receipt = {
+            "decimal_places": 2,
+            "items": [12.99, 7.49],
+            "adjustments": [
+                {
+                    "label": "10% OFF",
+                    "kind": "discount",
+                    "amount": 1.3,
+                    "percentage": 10,
+                    "item_orders": [1],
+                    "eligible_subtotal": 12.99,
+                }
+            ],
+            "tax_lines": [],
+            "amount_due": 19.18,
+        }
+
+        body = _scan_response(client, ocr_agent, scans.scan(receipt))
+
+        (entry,) = body["adjustments"]
+        assert (entry["eligible_subtotal"], entry["amount"], entry["status"]) == (
+            12.99,
+            1.3,
+            "verified",
+        )
+        assert entry["allocations"] == [{"item_order": 1, "amount": 1.3}]
+
+
 class TestReviewFields:
     def test_a_reconciled_scan_lists_each_adjustment_and_its_shares(
         self, client, ocr_agent
