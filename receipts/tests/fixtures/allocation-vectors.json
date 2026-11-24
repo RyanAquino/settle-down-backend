@@ -1677,5 +1677,25 @@
       "difference": 0,
       "scopes": []
     }
+  },
+  {
+    "name": "zero_rate_line_beside_one_rate_added_on_top",
+    "why": "A 0% line that taxes nothing beside 8.25% added on top (1.57 on the 19.00 left after a 1.00 coupon), and the 10% coupon fits neither item alone nor both: review. A 0% line is never the rate a client adds, so review already shows the 8.25% the receipt reconciles with once a person places the coupon.",
+    "decimal_places": 2,
+    "items": [10.0, 10.0],
+    "adjustments": [
+      {"label": "クーポン", "kind": "discount", "amount": 1.0, "percentage": 10, "item_orders": [], "eligible_subtotal": null}
+    ],
+    "tax_lines": [[0, null, 0.0], [8.25, null, 1.57]],
+    "amount_due": 20.57,
+    "expected": {
+      "status": "needs_review",
+      "costs": [0.0, 0.0],
+      "total": 20.57,
+      "tax_percentage": 8.25,
+      "tax_added": false,
+      "difference": 0,
+      "scopes": [["unresolved", []]]
+    }
   }
 ]

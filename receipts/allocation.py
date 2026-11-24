@@ -550,13 +550,17 @@ def _apply(
 
 
 def _display_rate(tax_lines: Sequence[TaxLine]) -> Fraction | None:
-    """The rate to show: the only printed rate, or the one with the largest base."""
-    rates = {line.rate for line in tax_lines if line.rate is not None}
+    """The rate to show: the only printed rate, or the one with the largest base.
+
+    A 0% line is never it, as it is never the rate a client adds on top: a
+    receipt reconciled with tax added shows the rate it added, in review too.
+    """
+    rates = {line.rate for line in tax_lines if line.rate}
     if len(rates) == 1:
         return next(iter(rates))
     bases: dict[Fraction, int] = {}
     for line in tax_lines:
-        if line.rate is not None and line.taxable_amount is not None:
+        if line.rate and line.taxable_amount is not None:
             bases[line.rate] = bases.get(line.rate, 0) + line.taxable_amount
     if not bases:
         return None

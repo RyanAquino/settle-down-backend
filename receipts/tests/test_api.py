@@ -550,6 +550,26 @@ class TestCorrections:
             {**body, **result, "receipt_items": result["receipt_items"]}
         )
 
+    def test_review_shows_the_rate_the_receipt_reconciles_with(self, client, ocr_agent):
+        # The app checks the recalculated receipt with the rate the scan
+        # showed, so a 0% line must not stand in for the rate added on top.
+        body = self._review(
+            client, ocr_agent, "zero_rate_line_beside_one_rate_added_on_top"
+        )
+        adjustments = body["adjustments"]
+        adjustments[0]["item_orders"] = [1]
+
+        response = self._post(client, _correction(body, adjustments=adjustments))
+
+        assert response.status_code == 200
+        result = response.json()
+        assert result["reconciliation"]["status"] == "reconciled"
+        assert [item["cost"] for item in result["receipt_items"]] == [9.0, 10.0]
+        assert result["tax_percentage"] == body["tax_percentage"] == 8.25
+        assert _accepted_by_installed_app(
+            {**result, "tax_percentage": body["tax_percentage"]}
+        )
+
     def test_a_scan_posted_back_unchanged_gives_the_same_money(self, client, ocr_agent):
         body = self._review(client, ocr_agent, "sugi")
 
