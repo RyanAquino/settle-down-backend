@@ -226,6 +226,36 @@ class TestReceiptEndpoint:
         catbox.assert_not_called()
         assert threads["upload"] != threads["read"]
 
+    @override_settings(RECEIPT_IMAGE_MAX_BYTES=len(b"jpeg-bytes") - 1)
+    def test_refuses_a_photo_over_the_size_limit(self, client, ocr_agent):
+        with (
+            patch("receipts.image_hosting.cloudinary_upload_file") as cloudinary,
+            patch("receipts.image_hosting.catbox_upload_file") as catbox,
+        ):
+            response = client.post(RECEIPT_URL, {"file": _upload()}, **AUTH)
+
+        assert response.status_code == 413
+        assert "larger than" in response.json()["detail"]
+        # Refused before it is read, sent to the model or hosted anywhere.
+        ocr_agent.run.assert_not_awaited()
+        cloudinary.assert_not_called()
+        catbox.assert_not_called()
+
+    @override_settings(RECEIPT_IMAGE_MAX_BYTES=len(b"jpeg-bytes"))
+    def test_reads_a_photo_at_the_size_limit(self, client, ocr_agent):
+        with (
+            patch(
+                "receipts.image_hosting.cloudinary_upload_file",
+                return_value="https://res.cloudinary.com/r.jpg",
+            ),
+            patch("receipts.image_hosting.catbox_upload_file") as catbox,
+        ):
+            response = client.post(RECEIPT_URL, {"file": _upload()}, **AUTH)
+
+        assert response.status_code == 200
+        ocr_agent.run.assert_awaited_once()
+        catbox.assert_not_called()
+
     def test_requires_a_file(self, client, ocr_agent):
         response = client.post(RECEIPT_URL, {}, **AUTH)
 

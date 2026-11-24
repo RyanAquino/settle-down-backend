@@ -1,4 +1,5 @@
 from asgiref.sync import sync_to_async
+from django.conf import settings
 from django.http import HttpRequest
 from django.utils import timezone
 from ninja import File, Router, UploadedFile
@@ -34,8 +35,14 @@ async def post_ocr_receipt(
     ``cost`` is what each line cost after every adjustment, so the items add
     up to ``total_amount`` (or do with ``tax_percentage`` added on top). A scan
     that does not reconcile allocates nothing: every cost is 0 and the review
-    step reads ``list_price``.
+    step reads ``list_price``. A photo larger than ``RECEIPT_IMAGE_MAX_BYTES``
+    is refused with 413 before it is read, sent to the model or hosted.
     """
+    if file.size is None or file.size > settings.RECEIPT_IMAGE_MAX_BYTES:
+        raise HttpError(
+            413,
+            f"The receipt photo is larger than {settings.RECEIPT_IMAGE_MAX_BYTES} bytes.",
+        )
     scan = await read_receipt(file.read())
     image_url = await sync_to_async(upload_receipt_image)(file)
     receipt, allocation = allocate_scan(scan)

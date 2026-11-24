@@ -133,6 +133,7 @@ All variables are optional and default to an empty value unless noted otherwise.
 | `SETTLE_UP_USER` | No | Username for Settle Up API authentication | _(empty)_ |
 | `SETTLE_UP_PASSWORD` | No | Password for Settle Up API authentication | _(empty)_ |
 | `UPSTREAM_HTTP_TIMEOUT` | No | Seconds any single upstream HTTP call (Firebase, Settle Up, image hosts) may take | `30` |
+| `RECEIPT_IMAGE_MAX_BYTES` | No | Largest receipt photo the scan reads, in bytes; a larger one is refused with `413` | `20971520` (20 MiB) |
 | `REDIS_URL` | No | Connection string for the Redis cache backend (django_redis) | `redis://localhost:6379/1` |
 | `APP_AUTH` | No | Bearer token clients must send; when unset, every request is rejected | _(empty)_ |
 | `DJANGO_SECRET_KEY` | Yes, in production | Django `SECRET_KEY`; the fallback is an insecure key meant only for local development | _(insecure dev key)_ |
@@ -189,7 +190,7 @@ Extract receipt items from an uploaded image using OCR via AI.
 
 | Field | Type | Description |
 | --- | --- | --- |
-| `file` | File (UploadedFile) | Image file upload |
+| `file` | File (UploadedFile) | Image file upload, at most `RECEIPT_IMAGE_MAX_BYTES` (20 MiB by default); a larger photo is refused with `413` before it is read, sent to the model or hosted |
 
 **Response** (`200`):
 
