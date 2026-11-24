@@ -86,6 +86,8 @@ class SettleUpClient:
                     currency=group.get("convertedToCurrency"),
                 )
             )
+        # Newest first: Firebase answers keys in order and push ids sort by
+        # creation time. The app files a new receipt in the first group listed.
         groups_map = groups_map[::-1]
         cache.set(cache_key, timeout=86500, value=groups_map)
 

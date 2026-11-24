@@ -72,3 +72,20 @@ class TestGetGroups:
         assert [(g.name, g.id, g.currency) for g in groups] == [
             ("Group A", "group-1", None)
         ]
+
+    def test_lists_the_newest_group_first_and_caches_the_list(
+        self, settle_up_client, mock_settleup
+    ):
+        # Firebase answers keys in order, and push ids sort by creation time.
+        # The app files a new receipt in the first group listed.
+        mock_settleup.requests.get.return_value.json.return_value = {
+            "-Aolder": {"member": "user-1"},
+            "-Bnewer": {"member": "user-1"},
+        }
+
+        groups = settle_up_client.get_groups()
+
+        assert [g.id for g in groups] == ["-Bnewer", "-Aolder"]
+        mock_settleup.cache.set.assert_any_call(
+            "settle_up_groups_v2", timeout=86500, value=groups
+        )

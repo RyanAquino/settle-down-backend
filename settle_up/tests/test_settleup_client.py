@@ -87,6 +87,15 @@ class TestReadCaching:
         mock_settleup.requests.get.assert_not_called()
 
 
+class TestReadCachingWrites:
+    def test_members_are_cached_for_a_day(self, settle_up_client, mock_settleup):
+        members = settle_up_client.get_group_members_by_group("group-1")
+
+        mock_settleup.cache.set.assert_any_call(
+            "group-1_settle_up_users_v2", timeout=86500, value=members
+        )
+
+
 class TestDeactivatedMembers:
     """Settle Up keeps a member who left as ``active: false``: out of new transactions."""
 
