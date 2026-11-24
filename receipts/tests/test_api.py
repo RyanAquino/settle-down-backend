@@ -33,6 +33,22 @@ def _app_token():
         yield
 
 
+@pytest.fixture(autouse=True)
+def _no_real_catbox_upload():
+    """Fail a test that would upload to the real catbox.moe.
+
+    upload_receipt_image falls back to catbox on any Cloudinary exception,
+    even an assertion failing inside a Cloudinary mock, and a catbox upload
+    is public and cannot be deleted. A test of the fallback patches
+    ``catbox_upload_file`` itself, which takes precedence.
+    """
+    with patch(
+        "receipts.image_hosting.catbox_upload_file",
+        side_effect=AssertionError("a test reached the real catbox.moe upload"),
+    ):
+        yield
+
+
 # A plain receipt as the OCR model transcribes it: one line, 10% tax added on
 # top. Its response is the same as before discounts were allocated.
 RECEIPT = ReceiptScan.model_validate(
@@ -255,6 +271,16 @@ class TestReceiptEndpoint:
         assert response.status_code == 200
         ocr_agent.run.assert_awaited_once()
         catbox.assert_not_called()
+
+    def test_a_test_cannot_reach_the_real_catbox_upload(self, client, ocr_agent):
+        with (
+            patch(
+                "receipts.image_hosting.cloudinary_upload_file",
+                side_effect=OSError("Cloudinary is down"),
+            ),
+            pytest.raises(AssertionError, match="real catbox"),
+        ):
+            client.post(RECEIPT_URL, {"file": _upload()}, **AUTH)
 
     def test_requires_a_file(self, client, ocr_agent):
         response = client.post(RECEIPT_URL, {}, **AUTH)

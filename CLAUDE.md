@@ -161,7 +161,7 @@ The mocked members endpoint returns exactly **Member 1 and Member 2** (`GROUP_ME
 - `test_ocr_validator.py` drives the real agent loop offline with a scripted `FunctionModel` and pins the number of model requests per scan.
 - `test_ocr_agent.py::TestWireSchema` captures what each provider path sends the model (via `httpx.MockTransport`) and asserts every transcribed field is required with no default; on the Gemini path a default would make it silently optional.
 - Each app's `tests/test_api.py` drives its routes through Django's test `Client` (URL conf, middleware, auth) with the outbound boundaries mocked.
-  A test that patches `cloudinary_upload_file` must patch `catbox_upload_file` too: the fallback catches every exception, including a failed assertion inside the Cloudinary mock, and would otherwise make a real catbox upload.
+  A test that patches `cloudinary_upload_file` must patch `catbox_upload_file` too: the fallback catches every exception, including a failed assertion inside the Cloudinary mock, and would otherwise make a real catbox upload. `receipts/tests/test_api.py` backs this with an autouse fixture that fails any test reaching the real catbox upload.
 
 pytest is configured in `pyproject.toml` (`DJANGO_SETTINGS_MODULE=settledown.settings`, `testpaths`, `-m "not live"`, strict markers/config).
 
