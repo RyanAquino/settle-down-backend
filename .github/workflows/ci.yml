@@ -1,12 +1,10 @@
 name: CI
 
-# Every pull request, and every push to main.
 on:
   pull_request:
   push:
     branches: [main]
 
-# Cancel an in-progress run when a newer one is queued for the same ref.
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
@@ -34,7 +32,6 @@ jobs:
         run: uv run ruff check --output-format=github .
       - name: Format (black --check)
         run: uv run black --check --diff .
-      # Workflow syntax, expression types, and shellcheck on every run: block.
       - name: Lint workflows (actionlint)
         run: |
           docker run --rm -v "$PWD:/repo:ro" -w /repo \

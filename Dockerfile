@@ -1,4 +1,3 @@
-# ---------- Builder: resolve & install dependencies into /app/.venv ----------
 # Build the venv on the SAME base image it will run on, so the venv's interpreter
 # matches the runtime exactly (no "incompatible environment" patch-version drift).
 # Keep the Python version in step with .python-version.
@@ -10,7 +9,7 @@ COPY --from=ghcr.io/astral-sh/uv:0.9 /uv /usr/local/bin/uv
 # - UV_COMPILE_BYTECODE: precompile .pyc at install time for faster cold starts
 # - UV_LINK_MODE=copy:    copy from uv's cache into the venv (no hardlink warnings)
 # - UV_PYTHON_DOWNLOADS=0: use the image's system CPython (never download a managed
-#   Python), so the venv targets /usr/local/bin/python3.14 — valid in the runtime stage
+#   Python), so the venv targets /usr/local/bin/python3.14, which is valid in the runtime stage
 ENV UV_COMPILE_BYTECODE=1 \
     UV_LINK_MODE=copy \
     UV_PYTHON_DOWNLOADS=0
@@ -25,11 +24,9 @@ WORKDIR /app
 COPY pyproject.toml uv.lock ./
 RUN uv sync --locked --no-install-project --no-dev
 
-# Bring in the application source and finalize the environment.
 COPY . /app
 RUN uv sync --locked --no-dev
 
-# ---------- Runtime: same base, with Python, uv, the venv + app code ----------
 FROM python:3.14-slim-bookworm
 
 # No .pyc at runtime (already compiled in the venv); unbuffered logs; never let
@@ -55,7 +52,6 @@ COPY --from=builder --chown=appuser:appuser /app /app
 
 USER 1000:1000
 
-# Django's default port (docker-compose maps 8000:8000).
 EXPOSE 8000
 
 # Start the Django ASGI app the uv way. --no-sync: the venv is already built into

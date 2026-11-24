@@ -5,8 +5,8 @@ from django.http import HttpRequest
 from ninja import NinjaAPI, Swagger
 from ninja.security import HttpBearer
 
-from backend_api.api import router as backend_api_router
-from backend_api.settleup_api import router as settleup_api_router
+from receipts.api import router as receipts_router
+from settle_up.api import router as settle_up_router
 
 
 class GlobalAuth(HttpBearer):
@@ -28,5 +28,5 @@ class GlobalAuth(HttpBearer):
 
 api = NinjaAPI(auth=GlobalAuth(), docs=Swagger(settings={"persistAuthorization": True}))
 
-api.add_router("/v1/receipts/", backend_api_router)
-api.add_router("/v1/settle-up/", settleup_api_router)
+api.add_router("/v1/receipts/", receipts_router)
+api.add_router("/v1/settle-up/", settle_up_router)

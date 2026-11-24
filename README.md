@@ -11,7 +11,7 @@ This project does not currently include a LICENSE file. As such, it is **UNLICEN
 ## Features
 
 - OCR receipt image processing with bilingual (Japanese/English) text extraction
-- AI-powered line-item parsing with quantity and discount handling
+- AI-powered line-item transcription; per-item, subset, coupon and points discounts are allocated to items in pure code and reconciled against the printed totals
 - Two-tier expense allocation: per-member itemization plus shared item splitting
 - Tax computation with floating-point equality verification against the declared total
 - Receipt image hosting via Cloudinary with a catbox.moe fallback
@@ -54,16 +54,20 @@ settledown exposes a [Django Ninja](https://django-ninja.dev/) API under the `/a
 
 1. The client uploads a receipt image to `POST /api/v1/receipts/receipt-items/`.
 2. The endpoint initializes a Pydantic AI agent backed by the OpenRouter provider (default `google/gemini-3-flash-preview`, via `get_openrouter_receipt_agent`). An alternate OpenAI/LLM7 factory (`get_receipt_agent`) remains available.
-3. The agent receives a system prompt (extract items, bilingual shop names, tax %, total) plus the image.
-4. The agent calls a `translate_jp_to_en_text` tool as needed (the system prompt instructs it to always translate the text to English before processing, so the tool may be invoked unconditionally).
-5. An output validator rejects grossly broken extractions (a non-positive total, no line items, a negative cost) and asks the model to retry. Items are deliberately not required to sum to the printed total, because mixed tax rates would make valid receipts fail.
-6. The receipt image is uploaded to Cloudinary; on failure, it is uploaded to catbox.moe.
-7. The API returns the receipt data: items list, shop names, tax %, total, date, and image URL.
+3. The agent receives a system prompt plus the image, and **transcribes** the receipt: printed item prices, every printed line that changes the amount to pay (discounts, coupons, points, surcharges, each with its printed amount, percent, base amount and the items it names), the tax lines and the amount due.
+   It never subtracts a discount or computes a total.
+4. The agent calls a `translate_jp_to_en_text` tool as needed for English names.
+5. `receipts/allocation.py` does the money math in integer minor units.
+   It resolves which items each line applies to from the printed numbers (a printed base amount or percentage), applies the lines in printed order by largest remainder, and reconciles the result against the printed amount due and tax lines.
+6. The output validator asks the model to read again only when a transcription cannot be read as money, and at most once more when it does not add up; the run returns the best attempt, not the last.
+7. The receipt image is uploaded to Cloudinary; on failure, it is uploaded to catbox.moe. The upload runs in the request's worker thread, so it never blocks the event loop.
+8. The API returns the items with `cost` set to what each line cost after every discount, plus shop names, tax %, the total paid, date, and image URL.
+   A scan that does not reconcile allocates nothing (every `cost` is 0), so the app cannot file a guessed split; the review fields say why.
 
 ### Flow 2 — Transaction Creation
 
 1. The client `POST`s the OCR results and member allocations to `POST /api/v1/settle-up/transactions/`.
-2. `SettleUpClient` signs in through the Firebase Auth REST API (`backend_api/firebase_auth.py`); the token is cached ~58 min in Redis.
+2. `SettleUpClient` signs in through the Firebase Auth REST API (`settle_up/firebase_auth.py`); the token is cached ~58 min in Redis.
 3. Per-member itemized costs are aggregated from the `user_receipt_items` list.
 4. Tax is added per member **only if** validation passes: `sum(member taxes + member items + shared taxes) == total_amount` (float equality — all-or-nothing).
 5. Shared items are split evenly across all group members (fetched from the Settle Up cache).
@@ -107,7 +111,7 @@ uv sync --no-dev
 uv run pre-commit install
 ```
 
-> Django migrations are optional — the app has no database models (`backend_api/models.py` is empty and there are no application migrations). Only Django's built-in apps would migrate. Run the following only if you need Django admin or built-in tables:
+> Django migrations are optional — the app has no database models (each app's `models.py` is empty and there are no application migrations). Only Django's built-in apps would migrate. Run the following only if you need Django admin or built-in tables:
 >
 > ```bash
 > uv run python manage.py migrate
@@ -189,13 +193,33 @@ Extract receipt items from an uploaded image using OCR via AI.
 
 | Field | Type | Description |
 | --- | --- | --- |
-| `receipt_items` | `list[ReceiptItemData]` | List of receipt items (each with `english_name: str`, `japanese_name: str`, `item_order: int`, `cost: float`, `quantity: int`, `discount: int`) |
+| `receipt_items` | `list[OCRReceiptItemOut]` | Items in printed order, each with `english_name: str`, `japanese_name: str`, `item_order: int` (from 1), `cost: float`, `quantity: int` and `discount: float` |
 | `en_shop_name` | `str` | Shop name in English |
-| `jp_shop_name` | `str` | Shop name in Japanese |
-| `tax_percentage` | `float` | Tax percentage |
-| `total_amount` | `float` | Total receipt amount |
+| `jp_shop_name` | `str` | Shop name as printed |
+| `tax_percentage` | `float` | The printed tax rate (the one with the largest taxable base when several are printed), or 0 |
+| `total_amount` | `float` | What the group splits: the amount paid after every discount, coupon and points |
 | `receipt_date` | `datetime` | Receipt date |
 | `receipt_image_url` | `str` | URL of the uploaded receipt image |
+
+`cost` is what each line cost after its share of every discount, coupon, points and surcharge, so the items add up to `total_amount`.
+In the example below, a 15% discount takes 300 off the 2,000 lotion, then 270 of redeemed points come off both lines in proportion (100 and 170).
+When tax is added on top at one printed rate, `cost` stays before tax and the items plus `tax_percentage` add up to `total_amount`, as before.
+`discount` is everything taken off the printed price, already subtracted from `cost`.
+When a scan cannot be reconciled with the printed totals, or a discount's items cannot be settled from the printed numbers, nothing is allocated: every `cost` and `discount` is 0.
+Printed prices are not returned as costs because they could add up to a misread total, which an app that checks costs against the total would accept.
+
+The review fields describe the receipt as printed and how it was settled:
+
+| Field | Type | Description |
+| --- | --- | --- |
+| `receipt_items[].list_price` | `float` | The price printed on the item's own line |
+| `decimal_places` | `int` | Decimal places of the receipt's currency (0 for yen, 2 for cents) |
+| `adjustments` | `list` | Every printed line that changed the amount to pay, in printed order: `printed_label`, `kind` (`discount`, `points` or `surcharge`), `amount`, `percentage`, `eligible_subtotal`, `item_orders`, `status` and `allocations` |
+| `tax_lines` | `list` | The printed tax lines: `rate`, `taxable_amount`, `tax_amount` |
+| `reconciliation` | `object` | `status` (`reconciled`, `needs_review` or `mismatch`) and the unexplained `difference` |
+
+An adjustment's `status` is `verified` when printed numbers (a base amount or a percentage) prove which items it covers, `assumed` when it was taken from the receipt's layout or applied to the whole receipt, and `unresolved` when a person must choose its items.
+`allocations` lists what each item took, and is empty unless the receipt reconciled.
 
 **Example:**
 
@@ -209,22 +233,51 @@ curl -X POST "http://localhost:8000/api/v1/receipts/receipt-items/" \
 {
   "receipt_items": [
     {
-      "english_name": "Onigiri",
-      "japanese_name": "おにぎり",
+      "english_name": "Dry shampoo",
+      "japanese_name": "ドライシャンプー",
       "item_order": 1,
-      "cost": 150.0,
-      "quantity": 2,
-      "discount": 0
+      "cost": 900.0,
+      "quantity": 1,
+      "discount": 100.0
+    },
+    {
+      "english_name": "Moisturizing lotion",
+      "japanese_name": "保湿ローション",
+      "item_order": 2,
+      "cost": 1530.0,
+      "quantity": 1,
+      "discount": 470.0
     }
   ],
-  "en_shop_name": "Sample Mart",
-  "jp_shop_name": "サンプルマート",
+  "en_shop_name": "Sample Pharmacy",
+  "jp_shop_name": "サンプル薬局",
   "tax_percentage": 10.0,
-  "total_amount": 330.0,
-  "receipt_date": "2026-05-30T12:34:56",
+  "total_amount": 2430.0,
+  "receipt_date": "2026-11-23T15:16:00",
   "receipt_image_url": "https://res.cloudinary.com/example/image/upload/receipt.jpg"
 }
 ```
+
+### `POST /api/v1/receipts/allocations/`
+
+Recalculate a scanned receipt after a person chose which items each adjustment applies to.
+The app's review step posts back what the scan returned, with each adjustment's `item_orders` set to the chosen items; fields it does not need are ignored.
+There is no model call and no image: the same allocation runs with the chosen items, then reconciles against the same printed totals and tax lines.
+
+**Auth:** Bearer token required.
+
+**Request** (`application/json`):
+
+| Field | Type | Description |
+| --- | --- | --- |
+| `decimal_places` | `int` | As the scan returned it |
+| `receipt_items` | `list` | Each with `item_order` and `list_price` |
+| `adjustments` | `list` | Each with `printed_label`, `kind`, `amount` and the chosen `item_orders`; `percentage` and `eligible_subtotal` are optional and only echoed |
+| `tax_lines` | `list` | The scan's `tax_lines` (optional) |
+| `total_amount` | `float` | The scan's `total_amount` |
+
+**Response** (`200`): `receipt_items` (each with `item_order`, `list_price`, `cost`, `discount`), `adjustments`, `reconciliation`, `tax_percentage` and `total_amount`, with the same meaning as in the scan response.
+A choice that cannot be applied, such as an unknown item or a discount larger than what its items cost, is a `422` with a `detail` message.
 
 ### `GET /api/v1/settle-up/groups/`
 
@@ -346,13 +399,13 @@ uv run pytest
 uv run pytest --cov
 
 # Run a single test module
-uv run pytest backend_api/tests/test_transaction.py
+uv run pytest settle_up/tests/test_transaction.py
 ```
 
 The suite is strict on purpose:
 
 - **Warnings are errors** (`filterwarnings = ["error"]`), so a deprecation fails the PR that introduces it instead of the upgrade that removes the API.
-- **HTTP tests go through the real stack**: `test_http_api.py` uses Django's test `Client`, so requests traverse the URL conf, middleware and bearer auth.
+- **HTTP tests go through the real stack**: each app's `tests/test_api.py` (and `settledown/tests/test_auth.py`) uses Django's test `Client`, so requests traverse the URL conf, middleware and bearer auth.
 - **Live tests are opt-in.** Tests marked `live` call paid APIs and are deselected by default; run them with `uv run pytest -m live` (see `test_ocr_agent_live.py` for the keys and receipt image they need).
 
 ### API contract snapshot
@@ -361,7 +414,7 @@ The suite is strict on purpose:
 After an intentional API change, regenerate it and review the diff:
 
 ```bash
-UPDATE_OPENAPI_SNAPSHOT=1 uv run pytest backend_api/tests/test_openapi_schema.py
+UPDATE_OPENAPI_SNAPSHOT=1 uv run pytest settledown/tests/test_openapi_schema.py
 ```
 
 ### Code quality checks
@@ -370,12 +423,12 @@ UPDATE_OPENAPI_SNAPSHOT=1 uv run pytest backend_api/tests/test_openapi_schema.py
 uv run black .              # format
 uv run ruff check --fix .   # lint, including security (bandit) and Django rules
 uv run mypy .               # type check with the django-stubs and pydantic plugins
-uv run lint-imports         # architecture contracts (layers; money math stays pure)
+uv run lint-imports         # architecture contracts (app layers and independence; money math stays pure)
 uv run deptry .             # every import is a declared dependency, and vice versa
 ```
 
 The rule sets and contracts live in `pyproject.toml`.
-The import contracts encode the layering `settledown` (composition root) > routers > integrations (`settleup_utils`, `ocr`, `services`) > `schemas` > domain math (`utils`) > `dto`, and forbid `backend_api.utils` from importing Django, ninja, HTTP clients or SDKs.
+The import contracts keep the two apps independent of each other and of the `settledown` project package, layer each app as routes > services > integrations > pure logic, and forbid the money math (`receipts.allocation`, `settle_up.splitting`) from importing Django, ninja, HTTP clients or SDKs.
 
 ### Pre-commit hooks
 
@@ -418,38 +471,45 @@ settledown/
 ├── Dockerfile
 ├── docker-compose.yml
 ├── .github/workflows/           # ci.yml, security.yml, nightly.yml
-├── settledown/                 # Django project
-│   ├── api.py                  # NinjaAPI instance, GlobalAuth, router registration
+├── settledown/                 # Django project: wiring only
+│   ├── api.py                  # NinjaAPI, GlobalAuth, mounts each app's router
 │   ├── settings.py             # Settings (env vars, Redis cache, APP_AUTH)
 │   ├── urls.py                 # /api/ -> NinjaAPI
-│   └── asgi.py                 # ASGI entrypoint (settledown.asgi:application)
-└── backend_api/
-    ├── api.py                  # Receipts router: POST /receipt-items/ (OCR)
-    ├── settleup_api.py         # Settle-up router: groups, users, transactions
-    ├── settleup_utils.py       # SettleUpClient: Settle Up REST calls, caching, transaction build
-    ├── firebase_auth.py        # Firebase Auth REST sign-in
-    ├── utils.py                # Pure receipt-splitting math (tax inference, weights)
-    ├── ocr.py                  # Pydantic AI receipt agents (OpenRouter, OpenAI/LLM7)
+│   ├── asgi.py                 # ASGI entrypoint (settledown.asgi:application)
+│   └── tests/                  # Bearer auth, OpenAPI snapshot, entrypoints
+├── receipts/                   # App: /api/v1/receipts/
+│   ├── api.py                  # Router (routes only): POST /receipt-items/, POST /allocations/
+│   ├── schemas.py              # Request/response schemas
+│   ├── services.py             # recalculate_receipt and the response helpers both routes share
+│   ├── ocr.py                  # Pydantic AI receipt agents (OpenRouter, OpenAI/LLM7), read_receipt
+│   ├── image_hosting.py        # Photo hosting: Cloudinary, falling back to catbox.moe
+│   ├── allocation.py           # Pure receipt money math: discount scope, allocation, reconciliation
+│   ├── transcription.py        # ReceiptScan: what the OCR model transcribes
+│   ├── llm7.py                 # LLM7ChatModel - LLM response parsing workaround
+│   ├── models.py               # Empty - no application ORM models
+│   └── tests/                  # Golden vectors, agent loop, routes over HTTP
+└── settle_up/                  # App: /api/v1/settle-up/
+    ├── api.py                  # Router (routes only): groups, users, transactions
     ├── schemas.py              # Request/response schemas
-    ├── services.py             # Cloudinary + catbox.moe image upload
-    ├── dto/                    # Data structures
-    │   ├── receipt_item.py     # ReceiptData and related OCR structures
-    │   ├── settleup.py         # Settle Up data structures
-    │   └── llm7_override.py    # LLM7ChatModel - LLM response parsing workaround
+    ├── services.py             # SettleUpClient: Settle Up REST calls, caching, transaction build
+    ├── firebase_auth.py        # Firebase Auth REST sign-in
+    ├── splitting.py            # Pure transaction-splitting math (tax inference, weights)
+    ├── dto.py                  # Settle Up data structures
     ├── models.py               # Empty - no application ORM models
     └── tests/
-        ├── conftest.py         # Fixtures with mocked external boundaries
+        ├── conftest.py         # SettleUpClient with its external boundaries mocked
         └── test_*.py
 ```
 
 ## Notes & Limitations
 
-- **No application database:** `models.py` is empty; all state is external (Firebase, Redis, client).
+- **No application database:** each app's `models.py` is empty; all state is external (Firebase, Redis, client).
 - **No Django ORM models:** transactions are created only via the Firebase REST API.
 - **No models are registered with the Django admin** (the app has no models).
-- **Tax is all-or-nothing:** it is computed only if `member_taxes + member_items + shared_tax == total_amount` (float equality).
+- **Tax is all-or-nothing on transactions:** it is computed only if `member_taxes + member_items + shared_tax == total_amount` (float equality).
+- **Scans with a deduction after tax do not reconcile**, nor do tax-on-top receipts at several rates whose printed bases do not identify each rate's items, nor receipts with a surcharge outside the tax base (such as a US gratuity with a printed tax rate); the app asks for review.
 - **No FX conversion:** transactions are filed in the group's currency and receipt amounts are assumed to match it; a receipt in a different currency than its group is recorded unconverted.
-- **`total_amount` is trusted input:** there is no reconciliation if extracted items differ from the declared total.
+- **The transaction endpoint trusts `total_amount`:** the scan endpoint reconciles every scan against the printed totals, but a transaction posted directly is not checked.
 - **Settle Up metadata is cached ~24h** (~86,500s): group/member info may be stale until the cache expires.
 - **Shared items are split evenly** across all members; there are no per-member overrides.
 - **A receipt image is required for a transaction** (the URL field is optional, but the OCR flow always provides it).

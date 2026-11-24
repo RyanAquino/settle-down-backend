@@ -1,0 +1,1681 @@
+[
+  {
+    "name": "sugi",
+    "why": "The Sugi Pharmacy receipt as printed: two item discounts, an 8% discount on the four items without one (base 2,909) and points on the whole receipt. The finals reproduce the printed tax bases (5,573 and 236).",
+    "decimal_places": 0,
+    "items": [987, 877, 2310, 1958, 767, 278],
+    "adjustments": [
+      {"label": "1品割引", "kind": "discount", "amount": 347, "percentage": 15, "item_orders": [3], "eligible_subtotal": null},
+      {"label": "1品割引", "kind": "discount", "amount": 294, "percentage": 15, "item_orders": [4], "eligible_subtotal": null},
+      {"label": "全品割引", "kind": "discount", "amount": 233, "percentage": 8, "item_orders": [], "eligible_subtotal": 2909},
+      {"label": "スギポイント値引金額", "kind": "points", "amount": 494, "percentage": null, "item_orders": [], "eligible_subtotal": null}
+    ],
+    "tax_lines": [[8, 236, 17], [10, 5573, 506]],
+    "amount_due": 5809,
+    "expected": {
+      "status": "reconciled",
+      "costs": [837, 744, 1809, 1533, 650, 236],
+      "total": 5809,
+      "tax_percentage": 10,
+      "tax_added": false,
+      "difference": 0,
+      "scopes": [["verified", [3]], ["verified", [4]], ["verified", [1, 2, 5, 6]], ["assumed", [1, 2, 3, 4, 5, 6]]],
+      "allocations": [{"3": 347}, {"4": 294}, {"1": 79, "2": 70, "5": 62, "6": 22}, {"1": 71, "2": 63, "3": 154, "4": 131, "5": 55, "6": 20}]
+    }
+  },
+  {
+    "name": "sugi_subset_discount_read_as_the_line_above",
+    "why": "The dominant misread today: the 8% line is attached to the snack printed above it. The printed base recovers the four items.",
+    "decimal_places": 0,
+    "items": [987, 877, 2310, 1958, 767, 278],
+    "adjustments": [
+      {"label": "1品割引", "kind": "discount", "amount": 347, "percentage": 15, "item_orders": [3], "eligible_subtotal": null},
+      {"label": "1品割引", "kind": "discount", "amount": 294, "percentage": 15, "item_orders": [4], "eligible_subtotal": null},
+      {"label": "全品割引", "kind": "discount", "amount": 233, "percentage": 8, "item_orders": [6], "eligible_subtotal": 2909},
+      {"label": "スギポイント値引金額", "kind": "points", "amount": 494, "percentage": null, "item_orders": [], "eligible_subtotal": null}
+    ],
+    "tax_lines": [[8, 236, 17], [10, 5573, 506]],
+    "amount_due": 5809,
+    "expected": {
+      "status": "reconciled",
+      "costs": [837, 744, 1809, 1533, 650, 236],
+      "total": 5809,
+      "tax_percentage": 10,
+      "tax_added": false,
+      "difference": 0,
+      "scopes": [["verified", [3]], ["verified", [4]], ["verified", [1, 2, 5, 6]], ["assumed", [1, 2, 3, 4, 5, 6]]]
+    }
+  },
+  {
+    "name": "sugi_subset_discount_without_its_base",
+    "why": "The base line is missing: the 8% still fits only the items without an item discount (8% of 2,909 is 232.72).",
+    "decimal_places": 0,
+    "items": [987, 877, 2310, 1958, 767, 278],
+    "adjustments": [
+      {"label": "1品割引", "kind": "discount", "amount": 347, "percentage": 15, "item_orders": [3], "eligible_subtotal": null},
+      {"label": "1品割引", "kind": "discount", "amount": 294, "percentage": 15, "item_orders": [4], "eligible_subtotal": null},
+      {"label": "全品割引", "kind": "discount", "amount": 233, "percentage": 8, "item_orders": [], "eligible_subtotal": null},
+      {"label": "スギポイント値引金額", "kind": "points", "amount": 494, "percentage": null, "item_orders": [], "eligible_subtotal": null}
+    ],
+    "tax_lines": [[8, 236, 17], [10, 5573, 506]],
+    "amount_due": 5809,
+    "expected": {
+      "status": "reconciled",
+      "costs": [837, 744, 1809, 1533, 650, 236],
+      "total": 5809,
+      "tax_percentage": 10,
+      "tax_added": false,
+      "difference": 0,
+      "scopes": [["verified", [3]], ["verified", [4]], ["verified", [1, 2, 5, 6]], ["assumed", [1, 2, 3, 4, 5, 6]]]
+    }
+  },
+  {
+    "name": "sugi_item_discount_read_under_the_wrong_item",
+    "why": "Seen live: the second 15% line attached to the mask. 15% of 767 is 115, so the one item it fits (1,958) is used instead.",
+    "decimal_places": 0,
+    "items": [987, 877, 2310, 1958, 767, 278],
+    "adjustments": [
+      {"label": "1品割引", "kind": "discount", "amount": 347, "percentage": 15, "item_orders": [3], "eligible_subtotal": null},
+      {"label": "1品割引", "kind": "discount", "amount": 294, "percentage": 15, "item_orders": [5], "eligible_subtotal": null},
+      {"label": "全品割引", "kind": "discount", "amount": 233, "percentage": 8, "item_orders": [], "eligible_subtotal": 2909},
+      {"label": "スギポイント値引金額", "kind": "points", "amount": 494, "percentage": null, "item_orders": [], "eligible_subtotal": null}
+    ],
+    "tax_lines": [[8, 236, 17], [10, 5573, 506]],
+    "amount_due": 5809,
+    "expected": {
+      "status": "reconciled",
+      "costs": [837, 744, 1809, 1533, 650, 236],
+      "total": 5809,
+      "tax_percentage": 10,
+      "tax_added": false,
+      "difference": 0,
+      "scopes": [["verified", [3]], ["verified", [4]], ["verified", [1, 2, 5, 6]], ["assumed", [1, 2, 3, 4, 5, 6]]]
+    }
+  },
+  {
+    "name": "sugi_both_item_discounts_read_under_one_item",
+    "why": "Both 15% lines on item 3: the second fits item 3 only after its first discount (15% of 1,963 is 294.45) while it fits item 4 as printed, so the receipt is ambiguous and nothing is allocated.",
+    "decimal_places": 0,
+    "items": [987, 877, 2310, 1958, 767, 278],
+    "adjustments": [
+      {"label": "1品割引", "kind": "discount", "amount": 347, "percentage": 15, "item_orders": [3], "eligible_subtotal": null},
+      {"label": "1品割引", "kind": "discount", "amount": 294, "percentage": 15, "item_orders": [3], "eligible_subtotal": null},
+      {"label": "全品割引", "kind": "discount", "amount": 233, "percentage": 8, "item_orders": [], "eligible_subtotal": 2909},
+      {"label": "スギポイント値引金額", "kind": "points", "amount": 494, "percentage": null, "item_orders": [], "eligible_subtotal": null}
+    ],
+    "tax_lines": [[8, 236, 17], [10, 5573, 506]],
+    "amount_due": 5809,
+    "expected": {
+      "status": "needs_review",
+      "costs": [0, 0, 0, 0, 0, 0],
+      "total": 5809,
+      "tax_percentage": 10,
+      "tax_added": false,
+      "difference": 0,
+      "scopes": [["verified", [3]], ["unresolved", [3]], ["verified", [1, 2, 5, 6]], ["assumed", [1, 2, 3, 4, 5, 6]]]
+    }
+  },
+  {
+    "name": "sugi_points_line_dropped_shopping_total_read",
+    "why": "Points dropped and the shopping total 6,303 read as the amount due. Items and total agree, but the printed taxable bases add up to 5,809, 494 less.",
+    "decimal_places": 0,
+    "items": [987, 877, 2310, 1958, 767, 278],
+    "adjustments": [
+      {"label": "1品割引", "kind": "discount", "amount": 347, "percentage": 15, "item_orders": [3], "eligible_subtotal": null},
+      {"label": "1品割引", "kind": "discount", "amount": 294, "percentage": 15, "item_orders": [4], "eligible_subtotal": null},
+      {"label": "全品割引", "kind": "discount", "amount": 233, "percentage": 8, "item_orders": [], "eligible_subtotal": 2909}
+    ],
+    "tax_lines": [[8, 236, 17], [10, 5573, 506]],
+    "amount_due": 6303,
+    "expected": {
+      "status": "mismatch",
+      "costs": [0, 0, 0, 0, 0, 0],
+      "total": 6303,
+      "tax_percentage": 10,
+      "tax_added": false,
+      "difference": -494,
+      "scopes": [["verified", [3]], ["verified", [4]], ["verified", [1, 2, 5, 6]]]
+    }
+  },
+  {
+    "name": "sugi_points_line_dropped",
+    "why": "Points dropped, amount due read correctly: the items come to 6,303 against 5,809.",
+    "decimal_places": 0,
+    "items": [987, 877, 2310, 1958, 767, 278],
+    "adjustments": [
+      {"label": "1品割引", "kind": "discount", "amount": 347, "percentage": 15, "item_orders": [3], "eligible_subtotal": null},
+      {"label": "1品割引", "kind": "discount", "amount": 294, "percentage": 15, "item_orders": [4], "eligible_subtotal": null},
+      {"label": "全品割引", "kind": "discount", "amount": 233, "percentage": 8, "item_orders": [], "eligible_subtotal": 2909}
+    ],
+    "tax_lines": [[8, 236, 17], [10, 5573, 506]],
+    "amount_due": 5809,
+    "expected": {
+      "status": "mismatch",
+      "costs": [0, 0, 0, 0, 0, 0],
+      "total": 5809,
+      "tax_percentage": 10,
+      "tax_added": false,
+      "difference": -494,
+      "scopes": [["verified", [3]], ["verified", [4]], ["verified", [1, 2, 5, 6]]]
+    }
+  },
+  {
+    "name": "sugi_total_before_points_read",
+    "why": "The shopping total 6,303 read as the amount due while the points line is present: the total paid is 6,303 less the points.",
+    "decimal_places": 0,
+    "items": [987, 877, 2310, 1958, 767, 278],
+    "adjustments": [
+      {"label": "1品割引", "kind": "discount", "amount": 347, "percentage": 15, "item_orders": [3], "eligible_subtotal": null},
+      {"label": "1品割引", "kind": "discount", "amount": 294, "percentage": 15, "item_orders": [4], "eligible_subtotal": null},
+      {"label": "全品割引", "kind": "discount", "amount": 233, "percentage": 8, "item_orders": [], "eligible_subtotal": 2909},
+      {"label": "スギポイント値引金額", "kind": "points", "amount": 494, "percentage": null, "item_orders": [], "eligible_subtotal": null}
+    ],
+    "tax_lines": [[8, 236, 17], [10, 5573, 506]],
+    "amount_due": 6303,
+    "expected": {
+      "status": "reconciled",
+      "costs": [837, 744, 1809, 1533, 650, 236],
+      "total": 5809,
+      "tax_percentage": 10,
+      "tax_added": false,
+      "difference": 0,
+      "scopes": [["verified", [3]], ["verified", [4]], ["verified", [1, 2, 5, 6]], ["assumed", [1, 2, 3, 4, 5, 6]]]
+    }
+  },
+  {
+    "name": "sugi_points_transcribed_before_the_subset_discount",
+    "why": "Order swap: with points first, no set of items costs 2,909 when the 8% line is reached, so the receipt is flagged instead of reconciling up to 6 yen off per item.",
+    "decimal_places": 0,
+    "items": [987, 877, 2310, 1958, 767, 278],
+    "adjustments": [
+      {"label": "1品割引", "kind": "discount", "amount": 347, "percentage": 15, "item_orders": [3], "eligible_subtotal": null},
+      {"label": "1品割引", "kind": "discount", "amount": 294, "percentage": 15, "item_orders": [4], "eligible_subtotal": null},
+      {"label": "スギポイント値引金額", "kind": "points", "amount": 494, "percentage": null, "item_orders": [], "eligible_subtotal": null},
+      {"label": "全品割引", "kind": "discount", "amount": 233, "percentage": 8, "item_orders": [], "eligible_subtotal": 2909}
+    ],
+    "tax_lines": [[8, 236, 17], [10, 5573, 506]],
+    "amount_due": 5809,
+    "expected": {
+      "status": "needs_review",
+      "costs": [0, 0, 0, 0, 0, 0],
+      "total": 5809,
+      "tax_percentage": 10,
+      "tax_added": false,
+      "difference": 0,
+      "scopes": [["verified", [3]], ["verified", [4]], ["assumed", [1, 2, 3, 4, 5, 6]], ["unresolved", []]]
+    }
+  },
+  {
+    "name": "sugi_item_numbers_repeated",
+    "why": "The model numbered every item 1, so its hints mean nothing. Items are numbered by position and the printed percentages find the items.",
+    "decimal_places": 0,
+    "items": [987, 877, 2310, 1958, 767, 278],
+    "items_as_read": [1, 1, 1, 1, 1, 1],
+    "adjustments": [
+      {"label": "1品割引", "kind": "discount", "amount": 347, "percentage": 15, "item_orders": [1], "eligible_subtotal": null},
+      {"label": "1品割引", "kind": "discount", "amount": 294, "percentage": 15, "item_orders": [1], "eligible_subtotal": null},
+      {"label": "全品割引", "kind": "discount", "amount": 233, "percentage": 8, "item_orders": [], "eligible_subtotal": 2909},
+      {"label": "スギポイント値引金額", "kind": "points", "amount": -494, "percentage": null, "item_orders": [], "eligible_subtotal": null}
+    ],
+    "tax_lines": [[8, 236, 17], [10, 5573, 506], [null, null, 523]],
+    "amount_due": 5809,
+    "expected": {
+      "status": "reconciled",
+      "costs": [837, 744, 1809, 1533, 650, 236],
+      "total": 5809,
+      "tax_percentage": 10,
+      "tax_added": false,
+      "difference": 0,
+      "scopes": [["verified", [3]], ["verified", [4]], ["verified", [1, 2, 5, 6]], ["assumed", [1, 2, 3, 4, 5, 6]]]
+    }
+  },
+  {
+    "name": "item_and_subset_discounts_with_points",
+    "why": "Archetype A: the Sugi shape on other numbers. お買物合計 3,356; bases 2,851 and 255.",
+    "decimal_places": 0,
+    "items": [1000, 2000, 500, 300],
+    "adjustments": [
+      {"label": "1品割引", "kind": "discount", "amount": 300, "percentage": 15, "item_orders": [2], "eligible_subtotal": null},
+      {"label": "全品割引", "kind": "discount", "amount": 144, "percentage": 8, "item_orders": [], "eligible_subtotal": 1800},
+      {"label": "ポイント値引", "kind": "points", "amount": 250, "percentage": null, "item_orders": [], "eligible_subtotal": null}
+    ],
+    "tax_lines": [[8, 255, 18], [10, 2851, 259]],
+    "amount_due": 3106,
+    "expected": {
+      "status": "reconciled",
+      "costs": [852, 1573, 426, 255],
+      "total": 3106,
+      "tax_percentage": 10,
+      "tax_added": false,
+      "difference": 0,
+      "scopes": [["verified", [2]], ["verified", [1, 3, 4]], ["assumed", [1, 2, 3, 4]]]
+    }
+  },
+  {
+    "name": "bundle_discount_on_named_items",
+    "why": "Archetype C: a 50 yen multi-buy on the two cans, taken from the items the model names.",
+    "decimal_places": 0,
+    "items": [248, 178, 150],
+    "adjustments": [
+      {"label": "まとめ値引", "kind": "discount", "amount": 50, "percentage": null, "item_orders": [1, 2], "eligible_subtotal": null}
+    ],
+    "tax_lines": [],
+    "amount_due": 526,
+    "expected": {
+      "status": "reconciled",
+      "costs": [219, 157, 150],
+      "total": 526,
+      "tax_percentage": 0,
+      "tax_added": false,
+      "difference": 0,
+      "scopes": [["assumed", [1, 2]]]
+    }
+  },
+  {
+    "name": "amount_only_discount_with_no_items_named",
+    "why": "Archetype C without a hint: nothing printed says which items, so it is spread over the whole receipt and marked assumed for review.",
+    "decimal_places": 0,
+    "items": [248, 178, 150],
+    "adjustments": [
+      {"label": "まとめ値引", "kind": "discount", "amount": 50, "percentage": null, "item_orders": [], "eligible_subtotal": null}
+    ],
+    "tax_lines": [],
+    "amount_due": 526,
+    "expected": {
+      "status": "reconciled",
+      "costs": [226, 163, 137],
+      "total": 526,
+      "tax_percentage": 0,
+      "tax_added": false,
+      "difference": 0,
+      "scopes": [["assumed", [1, 2, 3]]]
+    }
+  },
+  {
+    "name": "percent_discount_printed_after_its_item",
+    "why": "Archetype D1: 30% off the sashimi printed directly under it.",
+    "decimal_places": 0,
+    "items": [980, 158],
+    "adjustments": [
+      {"label": "割引", "kind": "discount", "amount": 294, "percentage": 30, "item_orders": [1], "eligible_subtotal": null}
+    ],
+    "tax_lines": [[8, 844, 62]],
+    "amount_due": 844,
+    "expected": {
+      "status": "reconciled",
+      "costs": [686, 158],
+      "total": 844,
+      "tax_percentage": 8,
+      "tax_added": false,
+      "difference": 0,
+      "scopes": [["verified", [1]]]
+    }
+  },
+  {
+    "name": "percent_discount_printed_before_its_item",
+    "why": "Archetype D2: the line sits under the bread but 30% of 158 is 47, so it belongs to the sashimi.",
+    "decimal_places": 0,
+    "items": [158, 980],
+    "adjustments": [
+      {"label": "割引", "kind": "discount", "amount": 294, "percentage": 30, "item_orders": [1], "eligible_subtotal": null}
+    ],
+    "tax_lines": [[8, 844, 62]],
+    "amount_due": 844,
+    "expected": {
+      "status": "reconciled",
+      "costs": [158, 686],
+      "total": 844,
+      "tax_percentage": 8,
+      "tax_added": false,
+      "difference": 0,
+      "scopes": [["verified", [2]]]
+    }
+  },
+  {
+    "name": "points_printed_as_a_payment_with_the_total_before_points",
+    "why": "Archetype F (NTA example): points paid after 合計 1,090. Points still reduce what the group splits, so the total is 1,069.",
+    "decimal_places": 0,
+    "items": [540, 550],
+    "adjustments": [
+      {"label": "ポイント支払", "kind": "points", "amount": 21, "percentage": null, "item_orders": [], "eligible_subtotal": null}
+    ],
+    "tax_lines": [[8, 540, null], [10, 550, null]],
+    "amount_due": 1090,
+    "expected": {
+      "status": "reconciled",
+      "costs": [530, 539],
+      "total": 1069,
+      "tax_percentage": 10,
+      "tax_added": false,
+      "difference": 0,
+      "scopes": [["assumed", [1, 2]]]
+    }
+  },
+  {
+    "name": "points_printed_as_a_payment_with_the_amount_paid",
+    "why": "Archetype F with the electronic-money payment 1,069 read as the amount due.",
+    "decimal_places": 0,
+    "items": [540, 550],
+    "adjustments": [
+      {"label": "ポイント支払", "kind": "points", "amount": 21, "percentage": null, "item_orders": [], "eligible_subtotal": null}
+    ],
+    "tax_lines": [[8, 540, null], [10, 550, null]],
+    "amount_due": 1069,
+    "expected": {
+      "status": "reconciled",
+      "costs": [530, 539],
+      "total": 1069,
+      "tax_percentage": 10,
+      "tax_added": false,
+      "difference": 0,
+      "scopes": [["assumed", [1, 2]]]
+    }
+  },
+  {
+    "name": "service_charge_with_tax_added_on_top",
+    "why": "Archetype G: a 10% service charge, then 10% tax on 19,085 added on top. Costs stay before tax and the app adds the rate, as for such receipts today.",
+    "decimal_places": 0,
+    "items": [12000, 4800, 550],
+    "adjustments": [
+      {"label": "サービス料", "kind": "surcharge", "amount": 1735, "percentage": 10, "item_orders": [], "eligible_subtotal": null}
+    ],
+    "tax_lines": [[10, 19085, 1908]],
+    "amount_due": 20993,
+    "expected": {
+      "status": "reconciled",
+      "costs": [13200, 5280, 605],
+      "total": 20993,
+      "tax_percentage": 10,
+      "tax_added": true,
+      "difference": 0,
+      "scopes": [["verified", [1, 2, 3]]]
+    }
+  },
+  {
+    "name": "discount_larger_than_its_item",
+    "why": "Archetype H: a 150 yen coupon under a 108 yen tea. It cannot be the tea's alone, so a person decides.",
+    "decimal_places": 0,
+    "items": [108, 540],
+    "adjustments": [
+      {"label": "クーポン値引", "kind": "discount", "amount": 150, "percentage": null, "item_orders": [1], "eligible_subtotal": null}
+    ],
+    "tax_lines": [],
+    "amount_due": 498,
+    "expected": {
+      "status": "needs_review",
+      "costs": [0, 0],
+      "total": 498,
+      "tax_percentage": 0,
+      "tax_added": false,
+      "difference": 0,
+      "scopes": [["unresolved", [1]]]
+    }
+  },
+  {
+    "name": "coupon_on_a_single_item_receipt",
+    "why": "Archetype I: with one item there is only one possible scope.",
+    "decimal_places": 0,
+    "items": [2990],
+    "adjustments": [
+      {"label": "クーポン", "kind": "discount", "amount": 500, "percentage": null, "item_orders": [], "eligible_subtotal": null}
+    ],
+    "tax_lines": [[10, 2490, 226]],
+    "amount_due": 2490,
+    "expected": {
+      "status": "reconciled",
+      "costs": [2490],
+      "total": 2490,
+      "tax_percentage": 10,
+      "tax_added": false,
+      "difference": 0,
+      "scopes": [["verified", [1]]]
+    }
+  },
+  {
+    "name": "free_item_then_member_discount",
+    "why": "Archetype J: a free-coffee coupon, then 5% member discount on what is left (380). The free item stays listed at 0.",
+    "decimal_places": 0,
+    "items": [150, 380],
+    "adjustments": [
+      {"label": "無料クーポン", "kind": "discount", "amount": 150, "percentage": null, "item_orders": [1], "eligible_subtotal": null},
+      {"label": "会員割引", "kind": "discount", "amount": 19, "percentage": 5, "item_orders": [], "eligible_subtotal": null}
+    ],
+    "tax_lines": [],
+    "amount_due": 361,
+    "expected": {
+      "status": "reconciled",
+      "costs": [0, 361],
+      "total": 361,
+      "tax_percentage": 0,
+      "tax_added": false,
+      "difference": 0,
+      "scopes": [["assumed", [1]], ["verified", [2]]]
+    }
+  },
+  {
+    "name": "coupon_before_tax_in_cents",
+    "why": "A cents currency: a 2.50 coupon over the receipt, then 8.25% tax added on 22.98.",
+    "decimal_places": 2,
+    "items": [12.99, 7.49, 5.0],
+    "adjustments": [
+      {"label": "COUPON", "kind": "discount", "amount": 2.5, "percentage": null, "item_orders": [], "eligible_subtotal": null}
+    ],
+    "tax_lines": [[8.25, null, 1.9]],
+    "amount_due": 24.88,
+    "expected": {
+      "status": "reconciled",
+      "costs": [11.72, 6.75, 4.51],
+      "total": 24.88,
+      "tax_percentage": 8.25,
+      "tax_added": true,
+      "difference": 0,
+      "scopes": [["assumed", [1, 2, 3]]]
+    }
+  },
+  {
+    "name": "whole_dollar_amounts_keep_cents",
+    "why": "Every printed amount is whole but the currency has cents, so the coupon is split to the cent.",
+    "decimal_places": 2,
+    "items": [10.0, 20.0],
+    "adjustments": [
+      {"label": "COUPON", "kind": "discount", "amount": 5.0, "percentage": null, "item_orders": [], "eligible_subtotal": null}
+    ],
+    "tax_lines": [],
+    "amount_due": 25.0,
+    "expected": {
+      "status": "reconciled",
+      "costs": [8.33, 16.67],
+      "total": 25.0,
+      "tax_percentage": 0,
+      "tax_added": false,
+      "difference": 0,
+      "scopes": [["assumed", [1, 2]]]
+    }
+  },
+  {
+    "name": "cents_printed_while_decimal_places_read_as_zero",
+    "why": "The model said 0 decimal places but printed cents, so the cents win.",
+    "decimal_places": 0,
+    "items": [12.99, 7.01],
+    "adjustments": [],
+    "tax_lines": [],
+    "amount_due": 20.0,
+    "expected": {
+      "status": "reconciled",
+      "costs": [12.99, 7.01],
+      "total": 20.0,
+      "tax_percentage": 0,
+      "tax_added": false,
+      "difference": 0,
+      "scopes": []
+    }
+  },
+  {
+    "name": "no_adjustments_tax_included",
+    "why": "A plain receipt that works today keeps working unchanged.",
+    "decimal_places": 0,
+    "items": [100, 200],
+    "adjustments": [],
+    "tax_lines": [[10, 300, 27]],
+    "amount_due": 300,
+    "expected": {
+      "status": "reconciled",
+      "costs": [100, 200],
+      "total": 300,
+      "tax_percentage": 10,
+      "tax_added": false,
+      "difference": 0,
+      "scopes": []
+    }
+  },
+  {
+    "name": "no_adjustments_tax_added_on_top",
+    "why": "A plain tax-exclusive receipt keeps today's shape: prices before tax plus the rate.",
+    "decimal_places": 0,
+    "items": [1000, 500],
+    "adjustments": [],
+    "tax_lines": [[10, null, 150]],
+    "amount_due": 1650,
+    "expected": {
+      "status": "reconciled",
+      "costs": [1000, 500],
+      "total": 1650,
+      "tax_percentage": 10,
+      "tax_added": true,
+      "difference": 0,
+      "scopes": []
+    }
+  },
+  {
+    "name": "no_adjustments_mixed_rates_tax_included",
+    "why": "Mixed 8% and 10% with tax inside the prices: the rate shown is the one with the larger base.",
+    "decimal_places": 0,
+    "items": [540, 550],
+    "adjustments": [],
+    "tax_lines": [[8, 540, 40], [10, 550, 50]],
+    "amount_due": 1090,
+    "expected": {
+      "status": "reconciled",
+      "costs": [540, 550],
+      "total": 1090,
+      "tax_percentage": 10,
+      "tax_added": false,
+      "difference": 0,
+      "scopes": []
+    }
+  },
+  {
+    "name": "no_adjustments_with_a_misread_total",
+    "why": "Nothing to allocate, but the items do not add up to the amount due.",
+    "decimal_places": 0,
+    "items": [100, 200],
+    "adjustments": [],
+    "tax_lines": [],
+    "amount_due": 350,
+    "expected": {
+      "status": "mismatch",
+      "costs": [0, 0],
+      "total": 350,
+      "tax_percentage": 0,
+      "tax_added": false,
+      "difference": 50,
+      "scopes": []
+    }
+  },
+  {
+    "name": "coupon_with_mixed_rates_and_tax_added_on_top",
+    "why": "Archetype B: tax added on top at 8% and 10%. The printed bases single out each rate's items (1,279 is the beef and milk, 512 the detergent), so each rate's tax goes into its own items: 1,096 + 87, 183 + 15, 512 + 51.",
+    "decimal_places": 0,
+    "items": [1280, 213, 598],
+    "adjustments": [
+      {"label": "クーポン", "kind": "discount", "amount": 300, "percentage": null, "item_orders": [], "eligible_subtotal": null}
+    ],
+    "tax_lines": [[8, 1279, 102], [10, 512, 51]],
+    "amount_due": 1944,
+    "expected": {
+      "status": "reconciled",
+      "costs": [1183, 198, 563],
+      "total": 1944,
+      "tax_percentage": 8,
+      "tax_added": false,
+      "difference": 0,
+      "scopes": [["assumed", [1, 2, 3]]]
+    }
+  },
+  {
+    "name": "discount_larger_than_the_receipt",
+    "why": "A coupon worth more than everything bought: whatever items it covers, the receipt cannot add up (100 - 150 is not 1), so it is read again rather than sent to a review that cannot succeed.",
+    "decimal_places": 0,
+    "items": [100],
+    "adjustments": [
+      {"label": "クーポン", "kind": "discount", "amount": 150, "percentage": null, "item_orders": [], "eligible_subtotal": null}
+    ],
+    "tax_lines": [],
+    "amount_due": 1,
+    "expected": {
+      "status": "mismatch",
+      "costs": [0],
+      "total": 1,
+      "tax_percentage": 0,
+      "tax_added": false,
+      "difference": 51,
+      "scopes": [["unresolved", []]]
+    }
+  },
+  {
+    "name": "base_matched_by_two_sets_of_items",
+    "why": "300 is both the third item and the first two: the printed base cannot say which.",
+    "decimal_places": 0,
+    "items": [100, 200, 300, 450],
+    "adjustments": [
+      {"label": "割引", "kind": "discount", "amount": 30, "percentage": 10, "item_orders": [], "eligible_subtotal": 300}
+    ],
+    "tax_lines": [],
+    "amount_due": 1020,
+    "expected": {
+      "status": "needs_review",
+      "costs": [0, 0, 0, 0],
+      "total": 1020,
+      "tax_percentage": 0,
+      "tax_added": false,
+      "difference": 0,
+      "scopes": [["unresolved", []]]
+    }
+  },
+  {
+    "name": "base_and_percentage_disagree",
+    "why": "The base matches two items, but 10% of 300 is 30, not 50: one of the printed numbers was misread.",
+    "decimal_places": 0,
+    "items": [100, 200, 450],
+    "adjustments": [
+      {"label": "割引", "kind": "discount", "amount": 50, "percentage": 10, "item_orders": [1, 2], "eligible_subtotal": 300}
+    ],
+    "tax_lines": [],
+    "amount_due": 700,
+    "expected": {
+      "status": "needs_review",
+      "costs": [0, 0, 0],
+      "total": 700,
+      "tax_percentage": 0,
+      "tax_added": false,
+      "difference": 0,
+      "scopes": [["unresolved", [1, 2]]]
+    }
+  },
+  {
+    "name": "percentage_that_fits_two_identical_items",
+    "why": "Two 980 yen items and 30% off one of them, with no item named.",
+    "decimal_places": 0,
+    "items": [980, 980],
+    "adjustments": [
+      {"label": "割引", "kind": "discount", "amount": 294, "percentage": 30, "item_orders": [], "eligible_subtotal": null}
+    ],
+    "tax_lines": [],
+    "amount_due": 1666,
+    "expected": {
+      "status": "needs_review",
+      "costs": [0, 0],
+      "total": 1666,
+      "tax_percentage": 0,
+      "tax_added": false,
+      "difference": 0,
+      "scopes": [["unresolved", []]]
+    }
+  },
+  {
+    "name": "percentage_that_fits_two_identical_items_one_named",
+    "why": "The same receipt with the item named: the printed placement decides.",
+    "decimal_places": 0,
+    "items": [980, 980],
+    "adjustments": [
+      {"label": "割引", "kind": "discount", "amount": 294, "percentage": 30, "item_orders": [2], "eligible_subtotal": null}
+    ],
+    "tax_lines": [],
+    "amount_due": 1666,
+    "expected": {
+      "status": "reconciled",
+      "costs": [980, 686],
+      "total": 1666,
+      "tax_percentage": 0,
+      "tax_added": false,
+      "difference": 0,
+      "scopes": [["verified", [2]]]
+    }
+  },
+  {
+    "name": "percentage_that_fits_nothing",
+    "why": "15% fits no item and no set of items.",
+    "decimal_places": 0,
+    "items": [1000, 2000],
+    "adjustments": [
+      {"label": "割引", "kind": "discount", "amount": 77, "percentage": 15, "item_orders": [1], "eligible_subtotal": null}
+    ],
+    "tax_lines": [],
+    "amount_due": 2923,
+    "expected": {
+      "status": "needs_review",
+      "costs": [0, 0],
+      "total": 2923,
+      "tax_percentage": 0,
+      "tax_added": false,
+      "difference": 0,
+      "scopes": [["unresolved", [1]]]
+    }
+  },
+  {
+    "name": "receipt_wide_percent_discount",
+    "why": "10% off everything, with no base printed.",
+    "decimal_places": 0,
+    "items": [600, 400],
+    "adjustments": [
+      {"label": "全品10%引", "kind": "discount", "amount": 100, "percentage": 10, "item_orders": [], "eligible_subtotal": null}
+    ],
+    "tax_lines": [],
+    "amount_due": 900,
+    "expected": {
+      "status": "reconciled",
+      "costs": [540, 360],
+      "total": 900,
+      "tax_percentage": 0,
+      "tax_added": false,
+      "difference": 0,
+      "scopes": [["verified", [1, 2]]]
+    }
+  },
+  {
+    "name": "percent_discount_on_named_items",
+    "why": "A set discount whose percent fits the two items named together.",
+    "decimal_places": 0,
+    "items": [300, 200, 500],
+    "adjustments": [
+      {"label": "セット割", "kind": "discount", "amount": 50, "percentage": 10, "item_orders": [1, 2], "eligible_subtotal": null}
+    ],
+    "tax_lines": [],
+    "amount_due": 950,
+    "expected": {
+      "status": "reconciled",
+      "costs": [270, 180, 500],
+      "total": 950,
+      "tax_percentage": 0,
+      "tax_added": false,
+      "difference": 0,
+      "scopes": [["verified", [1, 2]]]
+    }
+  },
+  {
+    "name": "second_discount_on_the_same_item",
+    "why": "Two discounts on one item: the second is 10% of what the item costs after the first (900), and no other item fits.",
+    "decimal_places": 0,
+    "items": [1000, 50],
+    "adjustments": [
+      {"label": "値引", "kind": "discount", "amount": 100, "percentage": 10, "item_orders": [1], "eligible_subtotal": null},
+      {"label": "クーポン", "kind": "discount", "amount": 90, "percentage": 10, "item_orders": [1], "eligible_subtotal": null}
+    ],
+    "tax_lines": [],
+    "amount_due": 860,
+    "expected": {
+      "status": "reconciled",
+      "costs": [810, 50],
+      "total": 860,
+      "tax_percentage": 0,
+      "tax_added": false,
+      "difference": 0,
+      "scopes": [["verified", [1]], ["verified", [1]]]
+    }
+  },
+  {
+    "name": "base_recovered_by_subset_search",
+    "why": "The base 1,250 is none of the simple candidates; exactly one set of items (500 + 750) costs that much.",
+    "decimal_places": 0,
+    "items": [500, 300, 750, 1100],
+    "adjustments": [
+      {"label": "対象商品割引", "kind": "discount", "amount": 125, "percentage": 10, "item_orders": [], "eligible_subtotal": 1250}
+    ],
+    "tax_lines": [],
+    "amount_due": 2525,
+    "expected": {
+      "status": "reconciled",
+      "costs": [450, 300, 675, 1100],
+      "total": 2525,
+      "tax_percentage": 0,
+      "tax_added": false,
+      "difference": 0,
+      "scopes": [["verified", [1, 3]]]
+    }
+  },
+  {
+    "name": "base_matched_by_no_items",
+    "why": "A misread base (2,900 for 2,909) that no set of items costs.",
+    "decimal_places": 0,
+    "items": [987, 877, 767, 278],
+    "adjustments": [
+      {"label": "全品割引", "kind": "discount", "amount": 233, "percentage": null, "item_orders": [], "eligible_subtotal": 2900}
+    ],
+    "tax_lines": [],
+    "amount_due": 2676,
+    "expected": {
+      "status": "needs_review",
+      "costs": [0, 0, 0, 0],
+      "total": 2676,
+      "tax_percentage": 0,
+      "tax_added": false,
+      "difference": 0,
+      "scopes": [["unresolved", []]]
+    }
+  },
+  {
+    "name": "surcharge_on_named_items",
+    "why": "A container fee printed under two items, with nothing else to check it against.",
+    "decimal_places": 0,
+    "items": [500, 300, 200],
+    "adjustments": [
+      {"label": "容器代", "kind": "surcharge", "amount": 20, "percentage": null, "item_orders": [1, 2], "eligible_subtotal": null}
+    ],
+    "tax_lines": [],
+    "amount_due": 1020,
+    "expected": {
+      "status": "reconciled",
+      "costs": [513, 307, 200],
+      "total": 1020,
+      "tax_percentage": 0,
+      "tax_added": false,
+      "difference": 0,
+      "scopes": [["assumed", [1, 2]]]
+    }
+  },
+  {
+    "name": "hints_to_items_that_do_not_exist_are_ignored",
+    "why": "The model names item 9 on a two-item receipt; the discount falls back to the whole receipt.",
+    "decimal_places": 0,
+    "items": [300, 100],
+    "adjustments": [
+      {"label": "値引", "kind": "discount", "amount": 40, "percentage": null, "item_orders": [9], "eligible_subtotal": null}
+    ],
+    "tax_lines": [],
+    "amount_due": 360,
+    "expected": {
+      "status": "reconciled",
+      "costs": [270, 90],
+      "total": 360,
+      "tax_percentage": 0,
+      "tax_added": false,
+      "difference": 0,
+      "scopes": [["assumed", [1, 2]]]
+    }
+  },
+  {
+    "name": "zero_amount_lines_and_meaningless_numbers_are_dropped",
+    "why": "A zero discount line is skipped, a percent above 100 and a zero base are ignored, and a negative tax rate is not a rate.",
+    "decimal_places": 0,
+    "items": [600, 400],
+    "adjustments": [
+      {"label": "値引", "kind": "discount", "amount": 0, "percentage": null, "item_orders": [1], "eligible_subtotal": null},
+      {"label": "値引", "kind": "discount", "amount": 100, "percentage": 250, "item_orders": [1], "eligible_subtotal": 0}
+    ],
+    "tax_lines": [[-10, null, null]],
+    "amount_due": 900,
+    "expected": {
+      "status": "reconciled",
+      "costs": [500, 400],
+      "total": 900,
+      "tax_percentage": 0,
+      "tax_added": false,
+      "difference": 0,
+      "scopes": [["assumed", [1]]]
+    }
+  },
+  {
+    "name": "several_rates_without_bases_show_no_rate",
+    "why": "Two rates printed with no taxable bases: no single rate to show.",
+    "decimal_places": 0,
+    "items": [540, 550],
+    "adjustments": [],
+    "tax_lines": [[8, null, 40], [10, null, 50]],
+    "amount_due": 1090,
+    "expected": {
+      "status": "reconciled",
+      "costs": [540, 550],
+      "total": 1090,
+      "tax_percentage": 0,
+      "tax_added": false,
+      "difference": 0,
+      "scopes": []
+    }
+  },
+  {
+    "name": "tax_bases_with_their_tax_add_up_to_the_total",
+    "why": "Tax-exclusive bases printed with their tax: the bases plus tax are the total, which agrees.",
+    "decimal_places": 0,
+    "items": [1100, 550],
+    "adjustments": [],
+    "tax_lines": [[10, 1500, 150]],
+    "amount_due": 1650,
+    "expected": {
+      "status": "reconciled",
+      "costs": [1100, 550],
+      "total": 1650,
+      "tax_percentage": 10,
+      "tax_added": false,
+      "difference": 0,
+      "scopes": []
+    }
+  },
+  {
+    "name": "tax_bases_that_disagree_without_tax_amounts",
+    "why": "The bases are printed but not the tax amounts, and the bases match nothing.",
+    "decimal_places": 0,
+    "items": [1100, 550],
+    "adjustments": [],
+    "tax_lines": [[10, 1400, null]],
+    "amount_due": 1650,
+    "expected": {
+      "status": "mismatch",
+      "costs": [0, 0],
+      "total": 1650,
+      "tax_percentage": 10,
+      "tax_added": false,
+      "difference": -250,
+      "scopes": []
+    }
+  },
+  {
+    "name": "tax_amount_printed_without_a_rate",
+    "why": "The T-shirt receipt: Tax 10.00 with no rate on a 69.40 subtotal. There is no rate for the app to add, so the tax is spread over the items in proportion (2.87, 1.43, 5.70).",
+    "decimal_places": 2,
+    "items": [19.9, 9.9, 39.6],
+    "adjustments": [],
+    "tax_lines": [[null, null, 10.0]],
+    "amount_due": 79.4,
+    "expected": {
+      "status": "reconciled",
+      "costs": [22.77, 11.33, 45.3],
+      "total": 79.4,
+      "tax_percentage": 0,
+      "tax_added": false,
+      "difference": 0,
+      "scopes": []
+    }
+  },
+  {
+    "name": "printed_tax_rate_that_does_not_fit_the_items",
+    "why": "Archetype E: 8.25% of 20.35 is 1.68, but 1.52 is printed because the bananas are tax-exempt. Spreading the tax over every item would misprice them, so it goes to review.",
+    "decimal_places": 2,
+    "items": [8.99, 12.49, 1.87],
+    "adjustments": [
+      {"label": "STORE CPN", "kind": "discount", "amount": 3.0, "percentage": null, "item_orders": [2], "eligible_subtotal": null}
+    ],
+    "tax_lines": [[8.25, null, 1.52]],
+    "amount_due": 21.87,
+    "expected": {
+      "status": "mismatch",
+      "costs": [0, 0, 0],
+      "total": 21.87,
+      "tax_percentage": 8.25,
+      "tax_added": false,
+      "difference": 1.52,
+      "scopes": [["assumed", [2]]]
+    }
+  },
+  {
+    "name": "coupon_with_the_subtotal_before_it_read_as_amount_due",
+    "why": "The model lists a 100 coupon but copies the subtotal before it (1,050) as the amount due. The printed prices add up to that total, so they must not be returned as costs: the app would file the full price.",
+    "decimal_places": 0,
+    "items": [300, 750],
+    "adjustments": [
+      {"label": "クーポン", "kind": "discount", "amount": 100, "percentage": null, "item_orders": [], "eligible_subtotal": null}
+    ],
+    "tax_lines": [],
+    "amount_due": 1050,
+    "expected": {
+      "status": "mismatch",
+      "costs": [0, 0],
+      "total": 1050,
+      "tax_percentage": 0,
+      "tax_added": false,
+      "difference": 100,
+      "scopes": [["assumed", [1, 2]]]
+    }
+  },
+  {
+    "name": "both_item_discounts_read_under_one_item_with_two_rivals",
+    "why": "The second 15% line fits item 1 only after its first discount, while two 1,958 items fit it as printed. Ambiguous, so a person decides.",
+    "decimal_places": 0,
+    "items": [2310, 1958, 1958],
+    "adjustments": [
+      {"label": "1品割引", "kind": "discount", "amount": 347, "percentage": 15, "item_orders": [1], "eligible_subtotal": null},
+      {"label": "1品割引", "kind": "discount", "amount": 294, "percentage": 15, "item_orders": [1], "eligible_subtotal": null}
+    ],
+    "tax_lines": [],
+    "amount_due": 5585,
+    "expected": {
+      "status": "needs_review",
+      "costs": [0, 0, 0],
+      "total": 5585,
+      "tax_percentage": 0,
+      "tax_added": false,
+      "difference": 0,
+      "scopes": [["verified", [1]], ["unresolved", [1]]]
+    }
+  },
+  {
+    "name": "two_equal_items_both_discounts_read_under_the_first",
+    "why": "Two 1,958 items, each with a 15% line, both read under the first. The second fits item 1 as printed, but item 1 already has its own discount and item 2, which has none, fits too.",
+    "decimal_places": 0,
+    "items": [1958, 1958, 500],
+    "adjustments": [
+      {"label": "1品割引", "kind": "discount", "amount": 294, "percentage": 15, "item_orders": [1], "eligible_subtotal": null},
+      {"label": "1品割引", "kind": "discount", "amount": 294, "percentage": 15, "item_orders": [1], "eligible_subtotal": null}
+    ],
+    "tax_lines": [],
+    "amount_due": 3828,
+    "expected": {
+      "status": "needs_review",
+      "costs": [0, 0, 0],
+      "total": 3828,
+      "tax_percentage": 0,
+      "tax_added": false,
+      "difference": 0,
+      "scopes": [["verified", [1]], ["unresolved", [1]]]
+    }
+  },
+  {
+    "name": "two_equal_items_second_discount_without_a_hint",
+    "why": "The same receipt with no item named for the second line: both 1,958 items fit as printed, but only the undiscounted one fits what it costs now.",
+    "decimal_places": 0,
+    "items": [1958, 1958, 500],
+    "adjustments": [
+      {"label": "1品割引", "kind": "discount", "amount": 294, "percentage": 15, "item_orders": [1], "eligible_subtotal": null},
+      {"label": "1品割引", "kind": "discount", "amount": 294, "percentage": 15, "item_orders": [], "eligible_subtotal": null}
+    ],
+    "tax_lines": [],
+    "amount_due": 3828,
+    "expected": {
+      "status": "reconciled",
+      "costs": [1664, 1664, 500],
+      "total": 3828,
+      "tax_percentage": 0,
+      "tax_added": false,
+      "difference": 0,
+      "scopes": [["verified", [1]], ["verified", [2]]]
+    }
+  },
+  {
+    "name": "sugi_points_dropped_with_a_base_printed_without_a_rate",
+    "why": "Points dropped and 6,303 read as the total, with the one tax line read as a base without a rate. That base (5,809) still shows 494 is missing.",
+    "decimal_places": 0,
+    "items": [987, 877, 2310, 1958, 767, 278],
+    "adjustments": [
+      {"label": "1品割引", "kind": "discount", "amount": 347, "percentage": 15, "item_orders": [3], "eligible_subtotal": null},
+      {"label": "1品割引", "kind": "discount", "amount": 294, "percentage": 15, "item_orders": [4], "eligible_subtotal": null},
+      {"label": "全品割引", "kind": "discount", "amount": 233, "percentage": 8, "item_orders": [], "eligible_subtotal": 2909}
+    ],
+    "tax_lines": [[null, 5809, null]],
+    "amount_due": 6303,
+    "expected": {
+      "status": "mismatch",
+      "costs": [0, 0, 0, 0, 0, 0],
+      "total": 6303,
+      "tax_percentage": 0,
+      "tax_added": false,
+      "difference": -494,
+      "scopes": [["verified", [3]], ["verified", [4]], ["verified", [1, 2, 5, 6]]]
+    }
+  },
+  {
+    "name": "tax_inside_the_prices_is_not_added_again",
+    "why": "The printed tax (90 on a base of 1,000) is 10/110 of the base, so it is inside the prices; a misread amount due of 1,100 must not be explained by adding 10% on top.",
+    "decimal_places": 0,
+    "items": [1000],
+    "adjustments": [],
+    "tax_lines": [[10, 1000, 90]],
+    "amount_due": 1100,
+    "expected": {
+      "status": "mismatch",
+      "costs": [0],
+      "total": 1100,
+      "tax_percentage": 10,
+      "tax_added": false,
+      "difference": 100,
+      "scopes": []
+    }
+  },
+  {
+    "name": "points_after_tax_on_a_tax_exclusive_receipt",
+    "why": "Tax added on top (100 on 1,000), then 100 of points paid after tax. Points equal to the tax make the items less points look like the amount paid, but the base says the prices exclude tax: a deduction after tax, which goes to review.",
+    "decimal_places": 0,
+    "items": [1000],
+    "adjustments": [
+      {"label": "ポイント支払", "kind": "points", "amount": 100, "percentage": null, "item_orders": [], "eligible_subtotal": null}
+    ],
+    "tax_lines": [[10, 1000, 100]],
+    "amount_due": 1000,
+    "expected": {
+      "status": "mismatch",
+      "costs": [0],
+      "total": 1000,
+      "tax_percentage": 10,
+      "tax_added": false,
+      "difference": 100,
+      "scopes": [["verified", [1]]]
+    }
+  },
+  {
+    "name": "prices_before_tax_with_the_subtotal_read_as_amount_due",
+    "why": "Tax added on top (100 on 1,000) but the subtotal before tax read as the amount due: items and total agree, yet the printed tax line says 100 is missing.",
+    "decimal_places": 0,
+    "items": [600, 400],
+    "adjustments": [],
+    "tax_lines": [[10, 1000, 100]],
+    "amount_due": 1000,
+    "expected": {
+      "status": "mismatch",
+      "costs": [0, 0],
+      "total": 1000,
+      "tax_percentage": 10,
+      "tax_added": false,
+      "difference": -100,
+      "scopes": []
+    }
+  },
+  {
+    "name": "fully_paid_with_points",
+    "why": "Points cover the whole receipt and the model copied the total before them: a total of 0 is not something to split.",
+    "decimal_places": 0,
+    "items": [330],
+    "adjustments": [
+      {"label": "ポイント利用", "kind": "points", "amount": 330, "percentage": null, "item_orders": [], "eligible_subtotal": null}
+    ],
+    "tax_lines": [],
+    "amount_due": 330,
+    "expected": {
+      "status": "mismatch",
+      "costs": [0],
+      "total": 330,
+      "tax_percentage": 0,
+      "tax_added": false,
+      "difference": 330,
+      "scopes": [["verified", [1]]]
+    }
+  },
+  {
+    "name": "display_rate_follows_the_largest_base_per_rate",
+    "why": "The 10% items print on two lines (300 + 300), more than the single 8% line (500).",
+    "decimal_places": 0,
+    "items": [500, 300, 300],
+    "adjustments": [],
+    "tax_lines": [[8, 500, null], [10, 300, null], [10, 300, null]],
+    "amount_due": 1100,
+    "expected": {
+      "status": "reconciled",
+      "costs": [500, 300, 300],
+      "total": 1100,
+      "tax_percentage": 10,
+      "tax_added": false,
+      "difference": 0,
+      "scopes": []
+    }
+  },
+  {
+    "name": "bundle_then_percent_off_everything_else",
+    "why": "A multi-buy on the two cans, then 8% off the rest (72 is 8% of 900): the bundle's items count as already discounted.",
+    "decimal_places": 0,
+    "items": [248, 178, 500, 400],
+    "adjustments": [
+      {"label": "まとめ値引", "kind": "discount", "amount": 50, "percentage": null, "item_orders": [1, 2], "eligible_subtotal": null},
+      {"label": "割引", "kind": "discount", "amount": 72, "percentage": 8, "item_orders": [], "eligible_subtotal": null}
+    ],
+    "tax_lines": [],
+    "amount_due": 1204,
+    "expected": {
+      "status": "reconciled",
+      "costs": [219, 157, 460, 368],
+      "total": 1204,
+      "tax_percentage": 0,
+      "tax_added": false,
+      "difference": 0,
+      "scopes": [["assumed", [1, 2]], ["verified", [3, 4]]]
+    }
+  },
+  {
+    "name": "percent_rounded_line_by_line",
+    "why": "5% of the printed base 1,050 is 52.5, but 48 is printed (each line rounded down). A percent is taken on its printed base, so the line goes to a person rather than trusting whichever items fit.",
+    "decimal_places": 0,
+    "items": [199, 199, 199, 199, 254],
+    "adjustments": [
+      {"label": "割引", "kind": "discount", "amount": 48, "percentage": 5, "item_orders": [], "eligible_subtotal": 1050}
+    ],
+    "tax_lines": [],
+    "amount_due": 1002,
+    "expected": {
+      "status": "needs_review",
+      "costs": [0, 0, 0, 0, 0],
+      "total": 1002,
+      "tax_percentage": 0,
+      "tax_added": false,
+      "difference": 0,
+      "scopes": [["unresolved", []]]
+    }
+  },
+  {
+    "name": "tax_amount_that_fits_neither_form_says_nothing",
+    "why": "A tax amount (50 on 1,000) that is neither 10% of the base nor 10/110 of it, likely misread: it decides nothing about whether prices include tax.",
+    "decimal_places": 0,
+    "items": [1000],
+    "adjustments": [],
+    "tax_lines": [[10, 1000, 50]],
+    "amount_due": 1000,
+    "expected": {
+      "status": "reconciled",
+      "costs": [1000],
+      "total": 1000,
+      "tax_percentage": 10,
+      "tax_added": false,
+      "difference": 0,
+      "scopes": []
+    }
+  },
+  {
+    "name": "tax_base_covering_only_part_of_the_items",
+    "why": "Tax added on top to a base of 1,000 while the items come to 1,200: the printed tax line does not account for the receipt, so it goes to review.",
+    "decimal_places": 0,
+    "items": [1000, 200],
+    "adjustments": [],
+    "tax_lines": [[10, 1000, 100]],
+    "amount_due": 1200,
+    "expected": {
+      "status": "mismatch",
+      "costs": [0, 0],
+      "total": 1200,
+      "tax_percentage": 10,
+      "tax_added": false,
+      "difference": -200,
+      "scopes": []
+    }
+  },
+  {
+    "name": "per_rate_bases_that_do_not_single_out_items",
+    "why": "Tax on top at 8% and 10% on bases of 300 each: 300 is both the third item and the first two, so neither rate's items are known.",
+    "decimal_places": 0,
+    "items": [100, 200, 300],
+    "adjustments": [],
+    "tax_lines": [[8, 300, 24], [10, 300, 30]],
+    "amount_due": 654,
+    "expected": {
+      "status": "mismatch",
+      "costs": [0, 0, 0],
+      "total": 654,
+      "tax_percentage": 10,
+      "tax_added": false,
+      "difference": 54,
+      "scopes": []
+    }
+  },
+  {
+    "name": "sugi_with_one_tax_base_unread",
+    "why": "The 10% base was not transcribed, so the bases cannot be checked; the receipt still reconciles on its total.",
+    "decimal_places": 0,
+    "items": [987, 877, 2310, 1958, 767, 278],
+    "adjustments": [
+      {"label": "1品割引", "kind": "discount", "amount": 347, "percentage": 15, "item_orders": [3], "eligible_subtotal": null},
+      {"label": "1品割引", "kind": "discount", "amount": 294, "percentage": 15, "item_orders": [4], "eligible_subtotal": null},
+      {"label": "全品割引", "kind": "discount", "amount": 233, "percentage": 8, "item_orders": [], "eligible_subtotal": 2909},
+      {"label": "スギポイント値引金額", "kind": "points", "amount": 494, "percentage": null, "item_orders": [], "eligible_subtotal": null}
+    ],
+    "tax_lines": [[8, 236, 17], [10, null, 506]],
+    "amount_due": 5809,
+    "expected": {
+      "status": "reconciled",
+      "costs": [837, 744, 1809, 1533, 650, 236],
+      "total": 5809,
+      "tax_percentage": 8,
+      "tax_added": false,
+      "difference": 0,
+      "scopes": [["verified", [3]], ["verified", [4]], ["verified", [1, 2, 5, 6]], ["assumed", [1, 2, 3, 4, 5, 6]]]
+    }
+  },
+  {
+    "name": "tax_without_base_and_the_subtotal_read_as_amount_due",
+    "why": "US layout: TAX 8.25% 2.48 with no base, and the subtotal 30.00 read as the amount due. 2.48 is 8.25% of 30.00 added on top, not tax inside it, so the reading is refused.",
+    "decimal_places": 2,
+    "items": [10.0, 20.0],
+    "adjustments": [],
+    "tax_lines": [[8.25, null, 2.48]],
+    "amount_due": 30.0,
+    "expected": {
+      "status": "mismatch",
+      "costs": [0, 0],
+      "total": 30.0,
+      "tax_percentage": 8.25,
+      "tax_added": false,
+      "difference": -2.48,
+      "scopes": []
+    }
+  },
+  {
+    "name": "tax_without_base_read_correctly",
+    "why": "The same receipt with the total 32.48 read: 8.25% added on top, as for such receipts today.",
+    "decimal_places": 2,
+    "items": [10.0, 20.0],
+    "adjustments": [],
+    "tax_lines": [[8.25, null, 2.48]],
+    "amount_due": 32.48,
+    "expected": {
+      "status": "reconciled",
+      "costs": [10.0, 20.0],
+      "total": 32.48,
+      "tax_percentage": 8.25,
+      "tax_added": true,
+      "difference": 0,
+      "scopes": []
+    }
+  },
+  {
+    "name": "tax_inside_without_base_is_not_added_again",
+    "why": "内税 10% 90 with no base: 90 sits inside 1,000, so a misread amount due of 1,100 is not explained by adding 10% on top.",
+    "decimal_places": 0,
+    "items": [1000],
+    "adjustments": [],
+    "tax_lines": [[10, null, 90]],
+    "amount_due": 1100,
+    "expected": {
+      "status": "mismatch",
+      "costs": [0],
+      "total": 1100,
+      "tax_percentage": 10,
+      "tax_added": false,
+      "difference": 100,
+      "scopes": []
+    }
+  },
+  {
+    "name": "points_after_tax_with_a_tax_line_without_base",
+    "why": "Tax 150 inside 1,650, then 150 of points paid: 150 is 10% on top of 1,500 and 10/110 inside 1,650, readings that disagree, so the tax line says nothing and the receipt reconciles to 1,500 paid.",
+    "decimal_places": 0,
+    "items": [1650],
+    "adjustments": [
+      {"label": "ポイント利用", "kind": "points", "amount": 150, "percentage": null, "item_orders": [], "eligible_subtotal": null}
+    ],
+    "tax_lines": [[10, null, 150]],
+    "amount_due": 1500,
+    "expected": {
+      "status": "reconciled",
+      "costs": [1500],
+      "total": 1500,
+      "tax_percentage": 10,
+      "tax_added": false,
+      "difference": 0,
+      "scopes": [["verified", [1]]]
+    }
+  },
+  {
+    "name": "coupon_the_printed_bases_put_on_one_rate",
+    "why": "A 200 coupon with nothing printed to say which items; the bases (8%: 800, 10%: 1,000) show it was all the 8% item's. Spread over both, no split of the costs matches the bases, so a person places it.",
+    "decimal_places": 0,
+    "items": [1000, 1000],
+    "adjustments": [
+      {"label": "クーポン", "kind": "discount", "amount": 200, "percentage": null, "item_orders": [], "eligible_subtotal": null}
+    ],
+    "tax_lines": [[8, 800, 59], [10, 1000, 90]],
+    "amount_due": 1800,
+    "expected": {
+      "status": "needs_review",
+      "costs": [0, 0],
+      "total": 1800,
+      "tax_percentage": 10,
+      "tax_added": false,
+      "difference": 0,
+      "scopes": [["unresolved", []]]
+    }
+  },
+  {
+    "name": "sugi_subset_discount_read_without_percent_or_base",
+    "why": "The 8% and the 2,909 base were not read, so the 233 is spread over every item and the snack ends at 247, but the printed 8% base is 236: the lines placed on the model's word go to a person.",
+    "decimal_places": 0,
+    "items": [987, 877, 2310, 1958, 767, 278],
+    "adjustments": [
+      {"label": "1品割引", "kind": "discount", "amount": 347, "percentage": 15, "item_orders": [3], "eligible_subtotal": null},
+      {"label": "1品割引", "kind": "discount", "amount": 294, "percentage": 15, "item_orders": [4], "eligible_subtotal": null},
+      {"label": "全品割引", "kind": "discount", "amount": 233, "percentage": null, "item_orders": [], "eligible_subtotal": null},
+      {"label": "スギポイント値引金額", "kind": "points", "amount": 494, "percentage": null, "item_orders": [], "eligible_subtotal": null}
+    ],
+    "tax_lines": [[8, 236, 17], [10, 5573, 506]],
+    "amount_due": 5809,
+    "expected": {
+      "status": "needs_review",
+      "costs": [0, 0, 0, 0, 0, 0],
+      "total": 5809,
+      "tax_percentage": 10,
+      "tax_added": false,
+      "difference": 0,
+      "scopes": [["verified", [3]], ["verified", [4]], ["unresolved", []], ["unresolved", []]]
+    }
+  },
+  {
+    "name": "equal_prices_with_per_rate_bases",
+    "why": "Two items at the same price and per-rate bases: some items still make up each base, so nothing changes.",
+    "decimal_places": 0,
+    "items": [500, 500, 300],
+    "adjustments": [],
+    "tax_lines": [[8, 300, 22], [10, 1000, 90]],
+    "amount_due": 1300,
+    "expected": {
+      "status": "reconciled",
+      "costs": [500, 500, 300],
+      "total": 1300,
+      "tax_percentage": 10,
+      "tax_added": false,
+      "difference": 0,
+      "scopes": []
+    }
+  },
+  {
+    "name": "whole_receipt_coupon_the_till_split_between_rates",
+    "why": "A 101 coupon the till split 50/51 between rates while the split here is 51/50: one unit off a base per line spread over several items is a till's rounding, not a misread.",
+    "decimal_places": 0,
+    "items": [1000, 1000],
+    "adjustments": [
+      {"label": "クーポン", "kind": "discount", "amount": 101, "percentage": null, "item_orders": [], "eligible_subtotal": null}
+    ],
+    "tax_lines": [[8, 950, 70], [10, 949, 86]],
+    "amount_due": 1899,
+    "expected": {
+      "status": "reconciled",
+      "costs": [949, 950],
+      "total": 1899,
+      "tax_percentage": 8,
+      "tax_added": false,
+      "difference": 0,
+      "scopes": [["assumed", [1, 2]]]
+    }
+  },
+  {
+    "name": "tax_total_read_as_a_surcharge",
+    "why": "外税 at 8% and 10% whose tax total 100 was also listed as a surcharge: it repeats the tax lines exactly, while the bases add up to the items without it, so a person removes it.",
+    "decimal_places": 0,
+    "items": [1000, 200],
+    "adjustments": [
+      {"label": "消費税", "kind": "surcharge", "amount": 100, "percentage": null, "item_orders": [], "eligible_subtotal": null}
+    ],
+    "tax_lines": [[8, 1000, 80], [10, 200, 20]],
+    "amount_due": 1300,
+    "expected": {
+      "status": "needs_review",
+      "costs": [0, 0],
+      "total": 1300,
+      "tax_percentage": 8,
+      "tax_added": false,
+      "difference": 0,
+      "scopes": [["unresolved", []]]
+    }
+  },
+  {
+    "name": "unnamed_percent_that_fits_an_item_and_everything_else",
+    "why": "8% of the first item's printed price is 200, and so is 8% of everything else (2,500). Two readings fit and nothing names the items, so a person decides.",
+    "decimal_places": 0,
+    "items": [2500, 1000, 1500],
+    "adjustments": [
+      {"label": "1品割引", "kind": "discount", "amount": 250, "percentage": 10, "item_orders": [1], "eligible_subtotal": null},
+      {"label": "全品割引", "kind": "discount", "amount": 200, "percentage": 8, "item_orders": [], "eligible_subtotal": null}
+    ],
+    "tax_lines": [],
+    "amount_due": 4550,
+    "expected": {
+      "status": "needs_review",
+      "costs": [0, 0, 0],
+      "total": 4550,
+      "tax_percentage": 0,
+      "tax_added": false,
+      "difference": 0,
+      "scopes": [["verified", [1]], ["unresolved", []]]
+    }
+  },
+  {
+    "name": "zero_rated_vat_line",
+    "why": "UK VAT: zero-rated food (0%, VAT 0.00) and a 20% item with VAT inside. A printed 0 is printed, and a 0% line says nothing about prices including tax.",
+    "decimal_places": 2,
+    "items": [5.0, 12.0],
+    "adjustments": [],
+    "tax_lines": [[0, 5.0, 0.0], [20, 12.0, 2.0]],
+    "amount_due": 17.0,
+    "expected": {
+      "status": "reconciled",
+      "costs": [5.0, 12.0],
+      "total": 17.0,
+      "tax_percentage": 20,
+      "tax_added": false,
+      "difference": 0,
+      "scopes": []
+    }
+  },
+  {
+    "name": "tax_on_top_with_a_zero_tax_bag",
+    "why": "外税 at 8% and 10% where the 10% line is a 3 yen bag whose tax rounds to 0: each rate's tax goes into its own items.",
+    "decimal_places": 0,
+    "items": [1000, 3],
+    "adjustments": [],
+    "tax_lines": [[8, 1000, 80], [10, 3, 0]],
+    "amount_due": 1083,
+    "expected": {
+      "status": "reconciled",
+      "costs": [1080, 3],
+      "total": 1083,
+      "tax_percentage": 8,
+      "tax_added": false,
+      "difference": 0,
+      "scopes": []
+    }
+  },
+  {
+    "name": "printed_tax_one_unit_off_the_rate",
+    "why": "10% on top of 1,500 is 150 and the amount due says 150 was added, but 151 is printed as the tax: one of them was misread.",
+    "decimal_places": 0,
+    "items": [1000, 500],
+    "adjustments": [],
+    "tax_lines": [[10, null, 151]],
+    "amount_due": 1650,
+    "expected": {
+      "status": "mismatch",
+      "costs": [0, 0],
+      "total": 1650,
+      "tax_percentage": 10,
+      "tax_added": false,
+      "difference": 150,
+      "scopes": []
+    }
+  },
+  {
+    "name": "coupon_the_store_split_per_tax_group",
+    "why": "外税 8% and 10%: the till took 57 of a 101 coupon from the 8% group and 44 from the 10% group, here 58 and 43. The bases still single out each group within that one unit, and each rate's tax goes into its items.",
+    "decimal_places": 0,
+    "items": [1201, 900],
+    "adjustments": [
+      {"label": "クーポン", "kind": "discount", "amount": 101, "percentage": null, "item_orders": [], "eligible_subtotal": null}
+    ],
+    "tax_lines": [[8, 1144, 91], [10, 856, 85]],
+    "amount_due": 2176,
+    "expected": {
+      "status": "reconciled",
+      "costs": [1234, 942],
+      "total": 2176,
+      "tax_percentage": 8,
+      "tax_added": false,
+      "difference": 0,
+      "scopes": [["assumed", [1, 2]]]
+    }
+  },
+  {
+    "name": "sugi_subset_base_misread_by_one_digit",
+    "why": "2,909 read as 2,929, which three other items happen to add up to; but 8% of 2,929 is 234.32, not 233, so the line goes to a person.",
+    "decimal_places": 0,
+    "items": [987, 877, 2310, 1958, 767, 278],
+    "adjustments": [
+      {"label": "1品割引", "kind": "discount", "amount": 347, "percentage": 15, "item_orders": [3], "eligible_subtotal": null},
+      {"label": "1品割引", "kind": "discount", "amount": 294, "percentage": 15, "item_orders": [4], "eligible_subtotal": null},
+      {"label": "全品割引", "kind": "discount", "amount": 233, "percentage": 8, "item_orders": [], "eligible_subtotal": 2929},
+      {"label": "スギポイント値引金額", "kind": "points", "amount": 494, "percentage": null, "item_orders": [], "eligible_subtotal": null}
+    ],
+    "tax_lines": [[8, 236, 17], [10, 5573, 506]],
+    "amount_due": 5809,
+    "expected": {
+      "status": "needs_review",
+      "costs": [0, 0, 0, 0, 0, 0],
+      "total": 5809,
+      "tax_percentage": 10,
+      "tax_added": false,
+      "difference": 0,
+      "scopes": [["verified", [3]], ["verified", [4]], ["unresolved", []], ["assumed", [1, 2, 3, 4, 5, 6]]]
+    }
+  },
+  {
+    "name": "one_decimal_currency_kept_in_hundredths",
+    "why": "A currency printed to one decimal is kept in hundredths, the precision the app checks added tax at: 8% of 10.30 is 0.82 or 0.83, not the 0.80 printed.",
+    "decimal_places": 1,
+    "items": [10.3],
+    "adjustments": [],
+    "tax_lines": [[8, null, 0.8]],
+    "amount_due": 11.1,
+    "expected": {
+      "status": "mismatch",
+      "costs": [0],
+      "total": 11.1,
+      "tax_percentage": 8,
+      "tax_added": false,
+      "difference": 0.8,
+      "scopes": []
+    }
+  },
+  {
+    "name": "per_rate_bases_that_no_items_add_up_to",
+    "why": "Per-rate bases of 800 and 1,300 on items of 100 and 2,000: no item or set of items makes 800, and nothing was placed on the model's word, so the receipt was misread.",
+    "decimal_places": 0,
+    "items": [100, 2000],
+    "adjustments": [],
+    "tax_lines": [[8, 800, 59], [10, 1300, 118]],
+    "amount_due": 2100,
+    "expected": {
+      "status": "mismatch",
+      "costs": [0, 0],
+      "total": 2100,
+      "tax_percentage": 10,
+      "tax_added": false,
+      "difference": 700,
+      "scopes": []
+    }
+  },
+  {
+    "name": "per_rate_bases_printed_before_tax",
+    "why": "Prices include tax but the bases are printed before it (8%: 1,000 + 80, 10%: 500 + 50): the bases with their tax are what the items make up.",
+    "decimal_places": 0,
+    "items": [1080, 550],
+    "adjustments": [],
+    "tax_lines": [[8, 1000, 80], [10, 500, 50]],
+    "amount_due": 1630,
+    "expected": {
+      "status": "reconciled",
+      "costs": [1080, 550],
+      "total": 1630,
+      "tax_percentage": 8,
+      "tax_added": false,
+      "difference": 0,
+      "scopes": []
+    }
+  },
+  {
+    "name": "points_after_tax_with_bases_printed_before_tax",
+    "why": "The same receipt with 100 of points paid after tax: the bases describe the items before the points, which cannot be told apart from here, so they are not checked item by item.",
+    "decimal_places": 0,
+    "items": [1080, 550],
+    "adjustments": [
+      {"label": "ポイント利用", "kind": "points", "amount": 100, "percentage": null, "item_orders": [], "eligible_subtotal": null}
+    ],
+    "tax_lines": [[8, 1000, 80], [10, 500, 50]],
+    "amount_due": 1530,
+    "expected": {
+      "status": "reconciled",
+      "costs": [1014, 516],
+      "total": 1530,
+      "tax_percentage": 8,
+      "tax_added": false,
+      "difference": 0,
+      "scopes": [["assumed", [1, 2]]]
+    }
+  },
+  {
+    "name": "bases_too_large_to_search",
+    "why": "A receipt in the millions: the per-rate bases are too large to search item by item, so only their sum is checked.",
+    "decimal_places": 0,
+    "items": [6000000, 7000000],
+    "adjustments": [],
+    "tax_lines": [[8, 6000000, 444444], [10, 7000000, 636363]],
+    "amount_due": 13000000,
+    "expected": {
+      "status": "reconciled",
+      "costs": [6000000, 7000000],
+      "total": 13000000,
+      "tax_percentage": 10,
+      "tax_added": false,
+      "difference": 0,
+      "scopes": []
+    }
+  }
+]

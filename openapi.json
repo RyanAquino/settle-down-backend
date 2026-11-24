@@ -8,7 +8,7 @@
   "paths": {
     "/api/v1/receipts/receipt-items/": {
       "post": {
-        "operationId": "backend_api_api_post_ocr_receipt",
+        "operationId": "receipts_api_post_ocr_receipt",
         "summary": "Post Ocr Receipt",
         "parameters": [],
         "responses": {
@@ -23,6 +23,10 @@
             }
           }
         },
+        "description": "Read a receipt photo and say what each line cost.\n\n``cost`` is what each line cost after every adjustment, so the items add\nup to ``total_amount`` (or do with ``tax_percentage`` added on top). A scan\nthat does not reconcile allocates nothing: every cost is 0 and the review\nstep reads ``list_price``.",
+        "tags": [
+          "receipts"
+        ],
         "requestBody": {
           "content": {
             "multipart/form-data": {
@@ -51,9 +55,47 @@
         ]
       }
     },
+    "/api/v1/receipts/allocations/": {
+      "post": {
+        "operationId": "receipts_api_post_receipt_allocation",
+        "summary": "Post Receipt Allocation",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReceiptAllocationOut"
+                }
+              }
+            }
+          }
+        },
+        "description": "Recalculate a scanned receipt with the items a person chose per adjustment.\n\nNo model call and no image: the same allocation as the scan, with each\nadjustment applied to the items given. A choice that cannot be applied\n(an unknown item, or a discount larger than its items) is a 422.",
+        "tags": [
+          "receipts"
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ReceiptCorrectionIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "security": [
+          {
+            "GlobalAuth": []
+          }
+        ]
+      }
+    },
     "/api/v1/settle-up/groups/": {
       "get": {
-        "operationId": "backend_api_settleup_api_get_settle_up_groups",
+        "operationId": "settle_up_api_get_settle_up_groups",
         "summary": "Get Settle Up Groups",
         "parameters": [
           {
@@ -91,6 +133,9 @@
             }
           }
         },
+        "tags": [
+          "settle-up"
+        ],
         "security": [
           {
             "GlobalAuth": []
@@ -100,7 +145,7 @@
     },
     "/api/v1/settle-up/users/": {
       "get": {
-        "operationId": "backend_api_settleup_api_get_settle_up_users",
+        "operationId": "settle_up_api_get_settle_up_users",
         "summary": "Get Settle Up Users",
         "parameters": [
           {
@@ -147,6 +192,9 @@
             }
           }
         },
+        "tags": [
+          "settle-up"
+        ],
         "security": [
           {
             "GlobalAuth": []
@@ -156,7 +204,7 @@
     },
     "/api/v1/settle-up/transactions/": {
       "post": {
-        "operationId": "backend_api_settleup_api_post_settle_up_create_transaction",
+        "operationId": "settle_up_api_post_settle_up_create_transaction",
         "summary": "Post Settle Up Create Transaction",
         "parameters": [],
         "responses": {
@@ -164,6 +212,9 @@
             "description": "No Content"
           }
         },
+        "tags": [
+          "settle-up"
+        ],
         "requestBody": {
           "content": {
             "application/json": {
@@ -184,34 +235,83 @@
   },
   "components": {
     "schemas": {
+      "OCRReceiptItemOut": {
+        "properties": {
+          "english_name": {
+            "description": "The item name in English",
+            "title": "English Name",
+            "type": "string"
+          },
+          "japanese_name": {
+            "description": "The item name as printed on the receipt",
+            "title": "Japanese Name",
+            "type": "string"
+          },
+          "item_order": {
+            "description": "The position of the item on the receipt, from 1 in printed order",
+            "title": "Item Order",
+            "type": "integer"
+          },
+          "cost": {
+            "description": "What this line cost after its share of every discount, coupon, points and surcharge, for the quantity shown; before tax when tax is added on top. 0 when the receipt did not reconcile: see list_price and reconciliation",
+            "title": "Cost",
+            "type": "number"
+          },
+          "quantity": {
+            "description": "The quantity purchased on this line",
+            "title": "Quantity",
+            "type": "integer"
+          },
+          "discount": {
+            "description": "Everything taken off this line's printed price, its own discounts and its share of receipt-wide ones, already subtracted from cost",
+            "title": "Discount",
+            "type": "number"
+          },
+          "list_price": {
+            "description": "The price printed on the item's own line",
+            "title": "List Price",
+            "type": "number"
+          }
+        },
+        "required": [
+          "english_name",
+          "japanese_name",
+          "item_order",
+          "cost",
+          "quantity",
+          "discount",
+          "list_price"
+        ],
+        "title": "OCRReceiptItemOut",
+        "type": "object"
+      },
       "OCRReceiptPostOut": {
         "properties": {
           "receipt_items": {
+            "description": "The purchased items, in printed order",
             "items": {
-              "$ref": "#/components/schemas/ReceiptItemData"
+              "$ref": "#/components/schemas/OCRReceiptItemOut"
             },
             "title": "Receipt Items",
             "type": "array"
           },
           "en_shop_name": {
-            "description": "The name of the shop in the receipt in english",
+            "description": "The shop name in English",
             "title": "En Shop Name",
             "type": "string"
           },
           "jp_shop_name": {
-            "description": "The name of the shop in the receipt in japanese",
+            "description": "The shop name as printed on the receipt",
             "title": "Jp Shop Name",
             "type": "string"
           },
           "tax_percentage": {
-            "default": 0,
-            "description": "The tax percentage of the receipt if applicable",
+            "description": "The printed tax rate, or the one with the largest taxable base, or 0. When the costs add up to total_amount it is for display only; otherwise it is the rate added on top of the costs",
             "title": "Tax Percentage",
             "type": "number"
           },
           "total_amount": {
-            "default": 0,
-            "description": "The total amount of all items in the receipt",
+            "description": "What the group splits: the amount paid after every discount, coupon and points. The costs add up to it, or do with tax_percentage added",
             "title": "Total Amount",
             "type": "number"
           },
@@ -225,60 +325,449 @@
             "description": "The url of the uploaded receipt image",
             "title": "Receipt Image Url",
             "type": "string"
+          },
+          "decimal_places": {
+            "description": "Decimal places of the receipt's currency: 0 for yen, 2 for cents",
+            "title": "Decimal Places",
+            "type": "integer"
+          },
+          "adjustments": {
+            "description": "Every printed line that changed the amount to pay, in printed order",
+            "items": {
+              "$ref": "#/components/schemas/ReceiptAdjustmentOut"
+            },
+            "title": "Adjustments",
+            "type": "array"
+          },
+          "tax_lines": {
+            "description": "The printed tax lines",
+            "items": {
+              "$ref": "#/components/schemas/ReceiptTaxLineOut"
+            },
+            "title": "Tax Lines",
+            "type": "array"
+          },
+          "reconciliation": {
+            "$ref": "#/components/schemas/ReconciliationOut"
           }
         },
         "required": [
           "receipt_items",
           "en_shop_name",
           "jp_shop_name",
-          "receipt_image_url"
+          "tax_percentage",
+          "total_amount",
+          "receipt_date",
+          "receipt_image_url",
+          "decimal_places",
+          "adjustments",
+          "tax_lines",
+          "reconciliation"
         ],
         "title": "OCRReceiptPostOut",
         "type": "object"
       },
-      "ReceiptItemData": {
-        "description": "Receipt Item model for each item in the receipt.",
+      "ReceiptAdjustmentOut": {
         "properties": {
-          "english_name": {
-            "description": "The name of the purchased item in english in the receipt",
-            "title": "English Name",
+          "printed_label": {
+            "description": "The label as printed, e.g. 全品割引",
+            "title": "Printed Label",
             "type": "string"
           },
-          "japanese_name": {
-            "description": "The name of the purchased item in Japanese in the receipt",
-            "title": "Japanese Name",
+          "kind": {
+            "description": "discount and points lower the amount to pay, surcharge raises it",
+            "enum": [
+              "discount",
+              "points",
+              "surcharge"
+            ],
+            "title": "Kind",
             "type": "string"
           },
+          "amount": {
+            "description": "The printed amount, always positive",
+            "title": "Amount",
+            "type": "number"
+          },
+          "percentage": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The printed percent, if any",
+            "title": "Percentage"
+          },
+          "eligible_subtotal": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The printed base amount it was calculated on, if any",
+            "title": "Eligible Subtotal"
+          },
+          "item_orders": {
+            "description": "The items it applies to, or the items the receipt names when unresolved",
+            "items": {
+              "type": "integer"
+            },
+            "title": "Item Orders",
+            "type": "array"
+          },
+          "status": {
+            "description": "verified: the printed numbers prove which items it covers; assumed: taken from the receipt's layout or applied to the whole receipt; unresolved: a person must choose its items",
+            "enum": [
+              "verified",
+              "assumed",
+              "unresolved"
+            ],
+            "title": "Status",
+            "type": "string"
+          },
+          "allocations": {
+            "description": "What each item took, when the receipt reconciled; otherwise empty",
+            "items": {
+              "$ref": "#/components/schemas/ReceiptAllocationShareOut"
+            },
+            "title": "Allocations",
+            "type": "array"
+          }
+        },
+        "required": [
+          "printed_label",
+          "kind",
+          "amount",
+          "percentage",
+          "eligible_subtotal",
+          "item_orders",
+          "status",
+          "allocations"
+        ],
+        "title": "ReceiptAdjustmentOut",
+        "type": "object"
+      },
+      "ReceiptAllocationShareOut": {
+        "properties": {
           "item_order": {
-            "description": "The order of the items in the receipt",
             "title": "Item Order",
             "type": "integer"
           },
+          "amount": {
+            "description": "What this item took of the adjustment",
+            "title": "Amount",
+            "type": "number"
+          }
+        },
+        "required": [
+          "item_order",
+          "amount"
+        ],
+        "title": "ReceiptAllocationShareOut",
+        "type": "object"
+      },
+      "ReceiptTaxLineOut": {
+        "properties": {
+          "rate": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Rate"
+          },
+          "taxable_amount": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Taxable Amount"
+          },
+          "tax_amount": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Tax Amount"
+          }
+        },
+        "required": [
+          "rate",
+          "taxable_amount",
+          "tax_amount"
+        ],
+        "title": "ReceiptTaxLineOut",
+        "type": "object"
+      },
+      "ReconciliationOut": {
+        "properties": {
+          "status": {
+            "description": "reconciled: the costs add up to the printed totals; needs_review: an adjustment's items must be chosen by a person; mismatch: the printed lines do not add up to the amount due",
+            "enum": [
+              "reconciled",
+              "needs_review",
+              "mismatch"
+            ],
+            "title": "Status",
+            "type": "string"
+          },
+          "difference": {
+            "description": "The unexplained difference when the status is mismatch, else 0",
+            "title": "Difference",
+            "type": "number"
+          }
+        },
+        "required": [
+          "status",
+          "difference"
+        ],
+        "title": "ReconciliationOut",
+        "type": "object"
+      },
+      "ReceiptAllocationItemOut": {
+        "properties": {
+          "item_order": {
+            "title": "Item Order",
+            "type": "integer"
+          },
+          "list_price": {
+            "title": "List Price",
+            "type": "number"
+          },
           "cost": {
-            "description": "The final line price for this item after any discount, for the quantity shown",
             "title": "Cost",
             "type": "number"
           },
-          "quantity": {
-            "description": "The quantity of the purchased item",
-            "title": "Quantity",
-            "type": "integer"
-          },
           "discount": {
-            "default": 0,
-            "description": "The discount amount applied to this line, in the receipt's currency (0 if none). Already subtracted from cost",
             "title": "Discount",
             "type": "number"
           }
         },
         "required": [
-          "english_name",
-          "japanese_name",
           "item_order",
+          "list_price",
           "cost",
-          "quantity"
+          "discount"
         ],
-        "title": "ReceiptItemData",
+        "title": "ReceiptAllocationItemOut",
+        "type": "object"
+      },
+      "ReceiptAllocationOut": {
+        "properties": {
+          "receipt_items": {
+            "items": {
+              "$ref": "#/components/schemas/ReceiptAllocationItemOut"
+            },
+            "title": "Receipt Items",
+            "type": "array"
+          },
+          "adjustments": {
+            "items": {
+              "$ref": "#/components/schemas/ReceiptAdjustmentOut"
+            },
+            "title": "Adjustments",
+            "type": "array"
+          },
+          "reconciliation": {
+            "$ref": "#/components/schemas/ReconciliationOut"
+          },
+          "tax_percentage": {
+            "title": "Tax Percentage",
+            "type": "number"
+          },
+          "total_amount": {
+            "title": "Total Amount",
+            "type": "number"
+          }
+        },
+        "required": [
+          "receipt_items",
+          "adjustments",
+          "reconciliation",
+          "tax_percentage",
+          "total_amount"
+        ],
+        "title": "ReceiptAllocationOut",
+        "type": "object"
+      },
+      "ReceiptCorrectionAdjustmentIn": {
+        "properties": {
+          "printed_label": {
+            "maxLength": 200,
+            "title": "Printed Label",
+            "type": "string"
+          },
+          "kind": {
+            "enum": [
+              "discount",
+              "points",
+              "surcharge"
+            ],
+            "title": "Kind",
+            "type": "string"
+          },
+          "amount": {
+            "title": "Amount",
+            "type": "number"
+          },
+          "item_orders": {
+            "description": "The items this adjustment applies to",
+            "items": {
+              "type": "integer"
+            },
+            "maxItems": 500,
+            "title": "Item Orders",
+            "type": "array"
+          },
+          "percentage": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Percentage"
+          },
+          "eligible_subtotal": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Eligible Subtotal"
+          }
+        },
+        "required": [
+          "printed_label",
+          "kind",
+          "amount",
+          "item_orders"
+        ],
+        "title": "ReceiptCorrectionAdjustmentIn",
+        "type": "object"
+      },
+      "ReceiptCorrectionIn": {
+        "properties": {
+          "decimal_places": {
+            "title": "Decimal Places",
+            "type": "integer"
+          },
+          "receipt_items": {
+            "items": {
+              "$ref": "#/components/schemas/ReceiptCorrectionItemIn"
+            },
+            "maxItems": 500,
+            "title": "Receipt Items",
+            "type": "array"
+          },
+          "adjustments": {
+            "items": {
+              "$ref": "#/components/schemas/ReceiptCorrectionAdjustmentIn"
+            },
+            "maxItems": 100,
+            "title": "Adjustments",
+            "type": "array"
+          },
+          "tax_lines": {
+            "items": {
+              "$ref": "#/components/schemas/ReceiptCorrectionTaxLineIn"
+            },
+            "maxItems": 20,
+            "title": "Tax Lines",
+            "type": "array"
+          },
+          "total_amount": {
+            "description": "The total_amount the scan returned",
+            "title": "Total Amount",
+            "type": "number"
+          }
+        },
+        "required": [
+          "decimal_places",
+          "receipt_items",
+          "adjustments",
+          "total_amount"
+        ],
+        "title": "ReceiptCorrectionIn",
+        "type": "object"
+      },
+      "ReceiptCorrectionItemIn": {
+        "properties": {
+          "item_order": {
+            "title": "Item Order",
+            "type": "integer"
+          },
+          "list_price": {
+            "title": "List Price",
+            "type": "number"
+          }
+        },
+        "required": [
+          "item_order",
+          "list_price"
+        ],
+        "title": "ReceiptCorrectionItemIn",
+        "type": "object"
+      },
+      "ReceiptCorrectionTaxLineIn": {
+        "properties": {
+          "rate": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Rate"
+          },
+          "taxable_amount": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Taxable Amount"
+          },
+          "tax_amount": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Tax Amount"
+          }
+        },
+        "title": "ReceiptCorrectionTaxLineIn",
         "type": "object"
       },
       "Input": {
