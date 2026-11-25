@@ -1,7 +1,9 @@
+import json
 from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 
 import pytest
+import requests
 
 from settle_up.services import SettleUpClient
 
@@ -21,6 +23,19 @@ GROUP_MEMBERS = {
 # document that carries the group's currency. The default is JPY so the
 # long-standing payload-pinning tests keep seeing the currency they pinned.
 GROUP_INFO = {"name": "Group A", "convertedToCurrency": "JPY"}
+
+
+def firebase_answer(status_code: int, body: object) -> requests.Response:
+    """A real ``requests.Response``, as the Firebase REST API answers.
+
+    Real rather than a MagicMock, so the code under test sees the status a
+    MagicMock would hide: its ``ok`` is always truthy.
+    """
+    response = requests.Response()
+    response.status_code = status_code
+    response._content = json.dumps(body).encode()
+    response.headers["Content-Type"] = "application/json"
+    return response
 
 
 @pytest.fixture
@@ -68,6 +83,9 @@ def mock_settleup():
             return mock_requests.get.return_value
 
         mock_requests.get.side_effect = _route_get
+
+        # Firebase accepts the write: it answers with the new transaction's key.
+        mock_requests.post.return_value = firebase_answer(200, {"name": "tx-1"})
 
         yield SimpleNamespace(
             firebase_auth=mock_firebase_auth,

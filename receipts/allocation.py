@@ -336,22 +336,24 @@ class _Budget:
         return self.steps >= 0
 
 
-def _unique_subset(
+def _subsets_reaching(
     orders: Sequence[int], weights: Mapping[int, int], target: int, budget: _Budget
-) -> tuple[int, ...] | None:
-    """The one subset of ``orders`` whose weights sum to ``target``, if exactly one.
+) -> tuple[int, tuple[int, ...] | None]:
+    """How many subsets of ``orders`` have weights summing to ``target``.
 
-    Weights must be positive. Gives up (None) when the budget runs out.
+    The count is capped at 2, which also stands for a search that gave up when
+    the budget ran out; with exactly one subset, it comes along. Weights must
+    be positive.
     """
     if sum(weights[order] for order in orders) < target:
-        return None
+        return 0, None
     # Number of subsets reaching each sum (capped at 2), and how each sum was
     # first reached: the sum before it and the position of the item added.
     counts: dict[int, int] = {0: 1}
     first: dict[int, tuple[int, int]] = {}
     for position, order in enumerate(orders):
         if not budget.spend(len(counts)):
-            return None
+            return 2, None
         weight = weights[order]
         for subtotal, count in list(counts.items()):
             reached = subtotal + weight
@@ -361,8 +363,9 @@ def _unique_subset(
             if not seen:
                 first[reached] = (subtotal, position)
             counts[reached] = min(2, seen + count)
-    if counts.get(target) != 1:
-        return None
+    found = counts.get(target, 0)
+    if found != 1:
+        return found, None
     # With exactly one subset, the first way each sum on its path was reached
     # is that subset.
     chosen: set[int] = set()
@@ -370,21 +373,69 @@ def _unique_subset(
     while reached:
         reached, position = first[reached]
         chosen.add(position)
-    return tuple(order for position, order in enumerate(orders) if position in chosen)
+    return 1, tuple(
+        order for position, order in enumerate(orders) if position in chosen
+    )
 
 
-def _nearest_reachable(weights: Iterable[int], target: int) -> int | None:
-    """How far ``target`` is from the nearest sum of some of ``weights``.
+def _unique_subset(
+    orders: Sequence[int], weights: Mapping[int, int], target: int, budget: _Budget
+) -> tuple[int, ...] | None:
+    """The one subset of ``orders`` whose weights sum to ``target``, if exactly one.
 
-    None when ``target`` is too large to search.
+    Weights must be positive. Gives up (None) when the budget runs out.
     """
-    if target > _MAX_GROUP_TARGET:
-        return None
-    # Bit n of ``reachable`` is set when some of the weights sum to n.
+    return _subsets_reaching(orders, weights, target, budget)[1]
+
+
+def _nearest_subset(
+    orders: Sequence[int],
+    weights: Mapping[int, int],
+    target: int,
+    tolerance: int,
+    budget: _Budget,
+) -> tuple[int, ...] | None:
+    """The one subset whose weights come nearest ``target``, within ``tolerance``.
+
+    Targets are tried nearest first (the target itself, then one below, one
+    above, and so on), and the first one some subset reaches decides: exactly
+    one subset there is the answer, several mean the target does not single
+    out the items, so a farther unique subset must not stand in for them.
+    None then, when no subset comes within ``tolerance``, or when the budget
+    runs out.
+    """
+    nearest_first = [target] + [
+        near
+        for distance in range(1, tolerance + 1)
+        for near in (target - distance, target + distance)
+    ]
+    for near in [near for near in nearest_first if near > 0]:
+        reaching, subset = _subsets_reaching(orders, weights, near, budget)
+        if reaching:
+            return subset
+    return None
+
+
+def _reachable_sums(weights: Iterable[int], limit: int) -> int:
+    """Every sum of some of ``weights`` up to ``limit``: bit n is set when one is n.
+
+    Weights are not negative, so one above ``limit`` is in no such sum; it is
+    skipped rather than shifted into a number as large as itself.
+    """
     reachable = 1
-    mask = (1 << (2 * target + 1)) - 1
+    mask = (1 << (limit + 1)) - 1
     for weight in weights:
-        reachable |= (reachable << weight) & mask
+        if weight <= limit:
+            reachable |= (reachable << weight) & mask
+    return reachable
+
+
+def _nearest_reachable(reachable: int, target: int) -> int:
+    """How far ``target`` is from the nearest sum set in ``reachable``.
+
+    ``reachable`` must hold every sum up to at least twice the target. A sum
+    beyond that is farther than the empty sum, 0, so it never decides.
+    """
     # The highest sum at or below the target (the empty set always reaches 0),
     # and the lowest at or above it.
     below = target - ((reachable & ((1 << (target + 1)) - 1)).bit_length() - 1)
@@ -542,13 +593,17 @@ def _apply(
 
 
 def _display_rate(tax_lines: Sequence[TaxLine]) -> Fraction | None:
-    """The rate to show: the only printed rate, or the one with the largest base."""
-    rates = {line.rate for line in tax_lines if line.rate is not None}
+    """The rate to show: the only printed rate, or the one with the largest base.
+
+    A 0% line is never it, as it is never the rate a client adds on top: a
+    receipt reconciled with tax added shows the rate it added, in review too.
+    """
+    rates = {line.rate for line in tax_lines if line.rate}
     if len(rates) == 1:
         return next(iter(rates))
     bases: dict[Fraction, int] = {}
     for line in tax_lines:
-        if line.rate is not None and line.taxable_amount is not None:
+        if line.rate and line.taxable_amount is not None:
             bases[line.rate] = bases.get(line.rate, 0) + line.taxable_amount
     if not bases:
         return None
@@ -590,9 +645,10 @@ def _prices_include_tax(
     points paid after tax leave the bases unchanged. With complete lines, a
     base that includes its tax means the prices do; a base before tax means the
     prices include tax when they add up to the bases plus the tax, and exclude
-    it when they add up to the bases alone. Without bases, one rate's tax is
-    read against the items themselves, and several rates' tax that no price
-    could hold inside it means the tax was added on top.
+    it when they add up to the bases alone, and says nothing when they do both
+    (points equal to the tax). Without bases, one rate's tax is read against
+    the items themselves, and several rates' tax that no price could hold
+    inside it means the tax was added on top.
     """
     if complete is not None:
         forms = {
@@ -607,10 +663,10 @@ def _prices_include_tax(
         if forms == {"on top"}:
             bases = sum(line.taxable_amount or 0 for line in complete)
             tax = sum(line.tax_amount or 0 for line in complete)
-            if bases + tax in subtotals:
-                return True
-            if bases in subtotals:
-                return False
+            including, excluding = bases + tax in subtotals, bases in subtotals
+            # Only a reading the subtotals single out says anything.
+            if including != excluding:
+                return including
         return None
     taxed = [line for line in tax_lines if line.rate and line.tax_amount is not None]
     if not taxed or any(line.taxable_amount is not None for line in taxed):
@@ -647,6 +703,11 @@ def _reading(
     - spread: tax printed with no rate, to be spread into the costs;
     - spread by rate: tax at printed rates, each into the items its base names;
     - before points: the amount due was read before points were taken off.
+
+    "before points" repairs a misread amount due, so it is never taken when
+    tax added on top, printed with a rate or without, explains the amount due
+    as read: points equal to that tax fit both, and nothing printed tells
+    them apart, so neither is.
     """
     complete = _complete_tax_lines(tax_lines)
     includes_tax = _prices_include_tax(
@@ -655,6 +716,12 @@ def _reading(
     rates = sorted({line.rate for line in tax_lines if line.rate})
     rated_tax = sum(line.tax_amount or 0 for line in tax_lines if line.rate is not None)
     unrated_tax = sum(line.tax_amount or 0 for line in tax_lines)
+    before_points = bool(
+        points
+        and includes_tax is not False
+        and subtotal == due - points
+        and due - points > 0
+    )
     if subtotal == due and includes_tax is not False:
         return "included"
     if (
@@ -669,21 +736,18 @@ def _reading(
         ]
         # A printed tax amount must be what was added, to the unit.
         if not printed or due - subtotal == sum(printed):
-            return "added"
+            return None if before_points else "added"
     if (
         not any(line.rate is not None for line in tax_lines)
         and unrated_tax
         and subtotal
         and subtotal + unrated_tax == due
     ):
-        return "spread"
+        return None if before_points else "spread"
     if includes_tax is False and complete is not None and subtotal + rated_tax == due:
         return "spread by rate"
-    if (
-        points
-        and includes_tax is not False
-        and subtotal == due - points
-        and due - points > 0
+    if before_points and (
+        includes_tax is True or due - subtotal not in (rated_tax, unrated_tax)
     ):
         return "before points"
     return None
@@ -697,29 +761,17 @@ def _tax_by_items(
     The items of every rate but the largest are the one set whose costs add up
     to that rate's printed base; the largest rate takes the rest, which must add
     up to its base too. A store may round each rate's share of a deduction
-    separately, so a base is matched within ``tolerance``, nearest first.
-    ``lines`` are the complete tax lines. None when the bases do not single out
-    the items.
+    separately, so a base is matched within ``tolerance``, nearest first: two
+    sets of items at the nearest target reached leave it unknown, even if a
+    farther one is unique. ``lines`` are the complete tax lines. None when the
+    bases do not single out the items.
     """
     lines = sorted(lines, key=lambda line: line.taxable_amount or 0)
     remaining = tuple(order for order, net in nets.items() if net > 0)
     taxed: list[tuple[int, tuple[int, ...]]] = []
     for line in lines[:-1]:
-        base = line.taxable_amount or 0
-        targets = [base] + [
-            target
-            for distance in range(1, tolerance + 1)
-            for target in (base - distance, base + distance)
-        ]
-        items = next(
-            (
-                found
-                for target in targets
-                if target > 0
-                and (found := _unique_subset(remaining, nets, target, budget))
-                is not None
-            ),
-            None,
+        items = _nearest_subset(
+            remaining, nets, line.taxable_amount or 0, tolerance, budget
         )
         if items is None:
             return None
@@ -805,9 +857,19 @@ def _rate_groups_gap(
             targets = with_tax
         else:
             return 0
-    for target in sorted(targets.values())[:-1]:
-        distance = _nearest_reachable(costs.values(), target)
-        if distance is not None and distance > tolerance:
+    # A base too large to search is skipped. One search, as wide as twice the
+    # largest base left, answers every one of them.
+    searched = [
+        target
+        for target in sorted(targets.values())[:-1]
+        if target <= _MAX_GROUP_TARGET
+    ]
+    if not searched:
+        return 0
+    reachable = _reachable_sums(costs.values(), 2 * searched[-1])
+    for target in searched:
+        distance = _nearest_reachable(reachable, target)
+        if distance > tolerance:
             return distance
     return 0
 
@@ -820,8 +882,8 @@ def _tax_read_as_surcharge(
     """The surcharge that repeats the printed tax lines, if one does.
 
     Tax added on top is copied into the tax lines; a surcharge for exactly the
-    printed tax, on no particular items, while the bases add up to the items
-    without it, is that tax read a second time.
+    printed tax while the bases add up to the items without it is that tax
+    read a second time, whichever items it was read under.
     """
     complete = _complete_tax_lines(tax_lines)
     if complete is None:
@@ -843,7 +905,6 @@ def _tax_read_as_surcharge(
             adjustment.kind == "surcharge"
             and adjustment.percentage is None
             and adjustment.eligible_subtotal is None
-            and not adjustment.item_orders
             and adjustment.amount == tax
             and bases == subtotal - adjustment.amount
         ):
@@ -886,7 +947,8 @@ def allocate(
 
     ``scopes`` replaces scope resolution with one chosen scope per adjustment,
     for a person correcting the receipt. Each chosen scope must name existing
-    items that can absorb the adjustment, or ``ValueError`` is raised.
+    items that can absorb the adjustment, or ``ValueError`` is raised; so is a
+    surcharge that is the printed tax read a second time.
     """
     if scopes is not None and len(scopes) != len(receipt.adjustments):
         raise ValueError("Choose exactly one scope for every adjustment.")
@@ -915,7 +977,7 @@ def allocate(
             item_specific.update(scope)
         allocations = _apply(adjustment, scope, nets)
         allocated.append(AllocatedAdjustment(adjustment, status, scope, allocations))
-    return _reconcile(receipt, prices, nets, allocated, budget)
+    return _reconcile(receipt, prices, nets, allocated, budget, scopes is not None)
 
 
 def _reconcile(
@@ -924,7 +986,15 @@ def _reconcile(
     nets: dict[int, int],
     allocated: list[AllocatedAdjustment],
     budget: _Budget,
+    chosen: bool,
 ) -> Allocation:
+    """Reconcile the allocated items with the printed totals.
+
+    ``chosen`` says a person chose every adjustment's items. A surcharge that
+    repeats the printed tax then raises ``ValueError`` when the receipt adds
+    up without it, since no choice of items can settle it; otherwise the
+    choice stands.
+    """
     due = receipt.amount_due
     display_rate = _display_rate(receipt.tax_lines)
 
@@ -966,9 +1036,16 @@ def _reconcile(
     if (
         repeated := _tax_read_as_surcharge(receipt.tax_lines, allocated, subtotal)
     ) is not None:
-        entries = list(allocated)
-        entries[repeated] = _unresolve(entries[repeated])
-        return outcome("needs_review", entries)
+        line = allocated[repeated].adjustment
+        if not chosen:
+            entries = list(allocated)
+            entries[repeated] = _unresolve(entries[repeated])
+            return outcome("needs_review", entries)
+        if _reading(receipt.tax_lines, subtotal - line.amount, due, points):
+            raise ValueError(
+                f"'{line.label}' is the printed tax read a second time: "
+                "remove it from the receipt."
+            )
 
     reading = _reading(receipt.tax_lines, subtotal, due, points)
     total, tax_added = due, False
@@ -1082,8 +1159,9 @@ def corrected_receipt(
     ``items`` are ``(item_order, printed price)``, ``adjustments`` are
     ``(label, kind, amount, percentage, eligible subtotal)`` and ``tax_lines``
     are ``(rate, taxable amount, tax amount)``, as the scan response returned
-    them. The percentage and base are kept for display; chosen scopes decide
-    the allocation. Raises ``ValueError`` for anything that cannot be money.
+    them. Chosen scopes decide the allocation, and the printed percentage and
+    base check them: a choice they contradict is ``assumed``. Raises
+    ``ValueError`` for anything that cannot be money.
     """
     if not items:
         raise ValueError("A receipt needs at least one item.")

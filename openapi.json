@@ -23,7 +23,7 @@
             }
           }
         },
-        "description": "Read a receipt photo and say what each line cost.\n\n``cost`` is what each line cost after every adjustment, so the items add\nup to ``total_amount`` (or do with ``tax_percentage`` added on top). A scan\nthat does not reconcile allocates nothing: every cost is 0 and the review\nstep reads ``list_price``.",
+        "description": "Read a receipt photo and say what each line cost.\n\n``cost`` is what each line cost after every adjustment, so the items add\nup to ``total_amount`` (or do with ``tax_percentage`` added on top). A scan\nthat does not reconcile allocates nothing: every cost is 0 and the review\nstep reads ``list_price``. A photo larger than ``RECEIPT_IMAGE_MAX_BYTES``\nis refused with 413 before it is read, sent to the model or hosted.",
         "tags": [
           "receipts"
         ],
@@ -152,6 +152,9 @@
             "in": "query",
             "name": "group_id",
             "schema": {
+              "maxLength": 768,
+              "minLength": 1,
+              "pattern": "^[^./#$\\[\\]?%\\x00-\\x1f\\x7f]+$",
               "title": "Group Id",
               "type": "string"
             },
@@ -212,6 +215,7 @@
             "description": "No Content"
           }
         },
+        "description": "File a receipt in its Settle Up group as one expense.\n\n204: Settle Up filed it. 422: no member owes anything, so there is nothing\nto split. 424: Settle Up refused it, so nothing was filed. 502: Settle Up\nfailed, so it may or may not have been filed.",
         "tags": [
           "settle-up"
         ],
@@ -306,7 +310,7 @@
             "type": "string"
           },
           "tax_percentage": {
-            "description": "The printed tax rate, or the one with the largest taxable base, or 0. When the costs add up to total_amount it is for display only; otherwise it is the rate added on top of the costs",
+            "description": "The printed non-zero tax rate, or the non-zero one with the largest taxable base, or 0. When the costs add up to total_amount it is for display only; otherwise it is the rate added on top of the costs",
             "title": "Tax Percentage",
             "type": "number"
           },
@@ -905,12 +909,16 @@
           "split_receipt_items": {
             "description": "Split receipt items",
             "items": {
+              "minimum": 0,
               "type": "number"
             },
             "title": "Split Receipt Items",
             "type": "array"
           },
           "group_id": {
+            "maxLength": 768,
+            "minLength": 1,
+            "pattern": "^[^./#$\\[\\]?%\\x00-\\x1f\\x7f]+$",
             "title": "Group Id",
             "type": "string"
           },
@@ -924,7 +932,7 @@
                 "type": "null"
               }
             ],
-            "description": "The date of the receipt in Japan timezone",
+            "description": "When the receipt was issued. An offset is honoured; a date without one is read as UTC. Defaults to now",
             "title": "Receipt Date"
           },
           "receipt_image_url": {
@@ -958,6 +966,7 @@
             "type": "string"
           },
           "cost": {
+            "minimum": 0,
             "title": "Cost",
             "type": "number"
           }

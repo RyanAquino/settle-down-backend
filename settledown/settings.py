@@ -42,7 +42,6 @@ ALLOWED_HOSTS = ["*"]
 
 
 INSTALLED_APPS = [
-    "django.contrib.admin",
     "django.contrib.auth",
     "django.contrib.contenttypes",
     "django.contrib.sessions",
@@ -143,6 +142,12 @@ SETTLE_UP_BASE_URL = f"https://{os.getenv('SETTLE_UP_API_DOMAIN')}"
 # Seconds any single upstream HTTP call (Firebase, Settle Up, image hosts) may
 # take. Without a bound, one hung upstream pins an ASGI worker indefinitely.
 UPSTREAM_HTTP_TIMEOUT = float(os.getenv("UPSTREAM_HTTP_TIMEOUT", "30"))
+
+# Largest receipt photo the scan reads, in bytes. A scan holds the photo in
+# memory several times over (read, then base64 in the model request), so an
+# unbounded upload can exhaust the server. 20 MiB is well above a full-quality
+# phone photo and about the most a model takes inline.
+RECEIPT_IMAGE_MAX_BYTES = int(os.getenv("RECEIPT_IMAGE_MAX_BYTES", str(20 * 2**20)))
 
 REDIS_URL = os.getenv("REDIS_URL", "redis://localhost:6379/1")
 APP_AUTH = os.getenv("APP_AUTH")

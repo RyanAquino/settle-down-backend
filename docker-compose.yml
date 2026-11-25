@@ -2,13 +2,24 @@ services:
   redis:
     image: redis:8
     restart: always
+    # Loopback only: this Redis has no password and the app unpickles what it
+    # reads, so anyone who can reach it can run code in the app. The app
+    # container reaches it over the compose network; the port is for a
+    # server run on the host (redis://localhost:6379/1).
     ports:
-      - "6379:6379"
+      - "127.0.0.1:6379:6379"
   app:
     build: .
     restart: always
     ports:
       - "8000:8000"
+    # The image holds no secrets (.env is dockerignored), so APP_AUTH and the
+    # upstream credentials come from .env at run time, when there is one.
+    env_file:
+      - path: .env
+        required: false
+    # Takes precedence over a REDIS_URL in .env: inside the container,
+    # localhost is the container itself.
     environment:
       REDIS_URL: redis://redis:6379/1
     depends_on:

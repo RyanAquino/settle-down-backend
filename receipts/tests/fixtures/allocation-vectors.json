@@ -1677,5 +1677,163 @@
       "difference": 0,
       "scopes": []
     }
+  },
+  {
+    "name": "zero_rate_line_beside_one_rate_added_on_top",
+    "why": "A 0% line that taxes nothing beside 8.25% added on top (1.57 on the 19.00 left after a 1.00 coupon), and the 10% coupon fits either item alone but not both, so it does not single out its item: review. A 0% line is never the rate a client adds, so review already shows the 8.25% the receipt reconciles with once a person places the coupon.",
+    "decimal_places": 2,
+    "items": [10.0, 10.0],
+    "adjustments": [
+      {"label": "クーポン", "kind": "discount", "amount": 1.0, "percentage": 10, "item_orders": [], "eligible_subtotal": null}
+    ],
+    "tax_lines": [[0, null, 0.0], [8.25, null, 1.57]],
+    "amount_due": 20.57,
+    "expected": {
+      "status": "needs_review",
+      "costs": [0.0, 0.0],
+      "total": 20.57,
+      "tax_percentage": 8.25,
+      "tax_added": false,
+      "difference": 0,
+      "scopes": [["unresolved", []]]
+    }
+  },
+  {
+    "name": "points_before_tax_equal_to_the_tax_on_a_tax_exclusive_receipt",
+    "why": "1,100 on a tax-exclusive receipt, 100 of points taken off before tax and 10% added on the 1,000 left: 1,100 paid. A tax-inclusive receipt whose 100 of points were paid after tax, read with the total before them as the amount due, prints the same lines and was paid 1,000. Points equal to the tax leave nothing to tell the two apart, so neither is taken.",
+    "decimal_places": 0,
+    "items": [1100],
+    "adjustments": [
+      {"label": "ポイント値引", "kind": "points", "amount": 100, "percentage": null, "item_orders": [], "eligible_subtotal": null}
+    ],
+    "tax_lines": [[10, 1000, 100]],
+    "amount_due": 1100,
+    "expected": {
+      "status": "mismatch",
+      "costs": [0],
+      "total": 1100,
+      "tax_percentage": 10,
+      "tax_added": false,
+      "difference": 100,
+      "scopes": [["verified", [1]]]
+    }
+  },
+  {
+    "name": "points_equal_to_the_tax_added_at_two_rates",
+    "why": "164 of points taken off before tax, then 8% and 10% added on top of the 918 left on each item (73 and 91), with no bases printed: 2,000 paid. Tax added on top at two rates explains the amount due as read, so it is not taken as a total read before the points; two rates on top go to review.",
+    "decimal_places": 0,
+    "items": [1000, 1000],
+    "adjustments": [
+      {"label": "ポイント値引", "kind": "points", "amount": 164, "percentage": null, "item_orders": [], "eligible_subtotal": null}
+    ],
+    "tax_lines": [[8, null, 73], [10, null, 91]],
+    "amount_due": 2000,
+    "expected": {
+      "status": "mismatch",
+      "costs": [0, 0],
+      "total": 2000,
+      "tax_percentage": 0,
+      "tax_added": false,
+      "difference": 164,
+      "scopes": [["assumed", [1, 2]]]
+    }
+  },
+  {
+    "name": "per_rate_base_reached_by_two_items_after_a_coupon",
+    "why": "Tax added on top at 8% and 10% after a 300 coupon over the whole receipt, which leaves the items at 1,000, 1,000 and 999. The 8% base of 1,000 is the first item or the second, so its items are not known; that the third item alone comes within the one unit of rounding the coupon allows must not decide it.",
+    "decimal_places": 0,
+    "items": [1100, 1100, 1099],
+    "adjustments": [
+      {"label": "クーポン", "kind": "discount", "amount": 300, "percentage": null, "item_orders": [], "eligible_subtotal": null}
+    ],
+    "tax_lines": [[8, 1000, 80], [10, 1999, 199]],
+    "amount_due": 3278,
+    "expected": {
+      "status": "mismatch",
+      "costs": [0, 0, 0],
+      "total": 3278,
+      "tax_percentage": 10,
+      "tax_added": false,
+      "difference": 279,
+      "scopes": [["assumed", [1, 2, 3]]]
+    }
+  },
+  {
+    "name": "per_rate_base_no_items_add_up_to",
+    "why": "Tax added on top at 8% (12 on 150) and 10% (45 on 450): the bases add up to the items, but no set of items makes the 8% base of 150, so a base or a price was misread.",
+    "decimal_places": 0,
+    "items": [100, 200, 300],
+    "adjustments": [],
+    "tax_lines": [[8, 150, 12], [10, 450, 45]],
+    "amount_due": 657,
+    "expected": {
+      "status": "mismatch",
+      "costs": [0, 0, 0],
+      "total": 657,
+      "tax_percentage": 10,
+      "tax_added": false,
+      "difference": 57,
+      "scopes": []
+    }
+  },
+  {
+    "name": "tax_total_read_as_a_surcharge_under_an_item",
+    "why": "外税 at 10% (120 on 1,200) whose tax was also listed as a surcharge under the second item: it repeats the tax line exactly while the base adds up to the items without it, so it is the tax read twice whichever item it was read under, and a person removes it rather than the second item's owner paying all of the tax.",
+    "decimal_places": 0,
+    "items": [1000, 200],
+    "adjustments": [
+      {"label": "消費税", "kind": "surcharge", "amount": 120, "percentage": null, "item_orders": [2], "eligible_subtotal": null}
+    ],
+    "tax_lines": [[10, 1200, 120]],
+    "amount_due": 1320,
+    "expected": {
+      "status": "needs_review",
+      "costs": [0, 0],
+      "total": 1320,
+      "tax_percentage": 10,
+      "tax_added": false,
+      "difference": 0,
+      "scopes": [["unresolved", [2]]]
+    }
+  },
+  {
+    "name": "per_rate_base_one_unit_from_one_item_after_a_coupon",
+    "why": "Tax added on top at 8% (13 on 174) and 10% (52 on 523) after a 99 coupon over the whole receipt, which this module splits 25, 25 and 49: the 198 item at 173, the 200 item at 175. Only the 198 item comes within the coupon's unit of the 8% base below it, so it is the 8% item, and the 200 item a unit above must not make the base look ambiguous.",
+    "decimal_places": 0,
+    "items": [198, 200, 398],
+    "adjustments": [
+      {"label": "クーポン", "kind": "discount", "amount": 99, "percentage": null, "item_orders": [], "eligible_subtotal": null}
+    ],
+    "tax_lines": [[8, 174, 13], [10, 523, 52]],
+    "amount_due": 762,
+    "expected": {
+      "status": "reconciled",
+      "costs": [186, 192, 384],
+      "total": 762,
+      "tax_percentage": 10,
+      "tax_added": false,
+      "difference": 0,
+      "scopes": [["assumed", [1, 2, 3]]]
+    }
+  },
+  {
+    "name": "points_equal_to_tax_printed_without_a_rate",
+    "why": "1,100, 100 of points and a tax line of 100 with no rate: tax added on top of the 1,000 left (1,100 paid), or tax inside the price with the points paid after it and the total before them read as the amount due (1,000 paid). Points equal to the tax leave nothing to tell the two apart, with or without a printed rate, so neither is taken.",
+    "decimal_places": 0,
+    "items": [1100],
+    "adjustments": [
+      {"label": "ポイント値引", "kind": "points", "amount": 100, "percentage": null, "item_orders": [], "eligible_subtotal": null}
+    ],
+    "tax_lines": [[null, null, 100]],
+    "amount_due": 1100,
+    "expected": {
+      "status": "mismatch",
+      "costs": [0],
+      "total": 1100,
+      "tax_percentage": 0,
+      "tax_added": false,
+      "difference": 100,
+      "scopes": [["verified", [1]]]
+    }
   }
 ]

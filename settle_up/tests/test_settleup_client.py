@@ -4,7 +4,7 @@ The happy-path money math lives in ``test_transaction.py`` and the payload
 shape in ``test_create_transaction.py``; this module covers what surrounds them.
 """
 
-from datetime import datetime
+from datetime import UTC, datetime, timedelta, timezone
 from typing import Any
 
 import pytest
@@ -80,11 +80,50 @@ class TestReadCaching:
     def test_members(self, settle_up_client, mock_settleup):
         members = [{"id": "m", "name": "Cached"}]
         mock_settleup.cache.get.side_effect = _cache_hit_for(
-            "_settle_up_users", members
+            "_settle_up_users_v2", members
         )
 
         assert settle_up_client.get_group_members_by_group("group-1") == members
         mock_settleup.requests.get.assert_not_called()
+
+
+class TestReadCachingWrites:
+    def test_members_are_cached_for_a_day(self, settle_up_client, mock_settleup):
+        members = settle_up_client.get_group_members_by_group("group-1")
+
+        mock_settleup.cache.set.assert_any_call(
+            "group-1_settle_up_users_v2", timeout=86500, value=members
+        )
+
+
+class TestDeactivatedMembers:
+    """Settle Up keeps a member who left as ``active: false``: out of new transactions."""
+
+    @pytest.fixture(autouse=True)
+    def _members(self, mock_settleup):
+        mock_settleup.requests.get.return_value.json.return_value = {
+            "Member 1": {"name": "Member 1", "active": True},
+            # Older data carries no flag: the member is active.
+            "Member 2": {"name": "Member 2"},
+            "Member 3": {"name": "Member 3", "active": False},
+        }
+
+    def test_the_roster_leaves_them_out(self, settle_up_client):
+        assert settle_up_client.get_group_members_by_group("group-1") == [
+            {"id": "Member 1", "name": "Member 1"},
+            {"id": "Member 2", "name": "Member 2"},
+        ]
+
+    def test_a_shared_item_is_split_over_active_members_only(self, settle_up_client):
+        result = settle_up_client._compute_transaction(
+            receipt_items=[],
+            tax_percentage=10,
+            group_id="group-1",
+            total_amount=3000,
+            split_receipt_items=[3000],
+        )
+
+        assert result == {"Member 1": 1500.0, "Member 2": 1500.0}
 
 
 class TestMissingGroup:
@@ -128,12 +167,30 @@ class TestCreateTransaction:
     def test_receipt_date_becomes_the_transaction_time(
         self, settle_up_client, mock_settleup
     ):
-        # Naive on purpose: clients send receipt dates without an offset.
+        # Naive on purpose: a date without an offset is read as UTC.
         receipt_date = datetime(2026, 5, 30, 12, 34, 56)  # noqa: DTZ001
         settle_up_client.create_transaction(_payload(receipt_date=receipt_date))
 
         body = mock_settleup.requests.post.call_args.kwargs["json"]
         assert body["dateTime"] == 1780144496000
+
+    @pytest.mark.parametrize(
+        "receipt_date",
+        [
+            # What the app sends: Date.toISOString(), always UTC.
+            datetime(2026, 11, 23, 11, tzinfo=UTC),
+            # The same instant as a Japanese wall-clock time.
+            datetime(2026, 11, 23, 20, tzinfo=timezone(timedelta(hours=9))),
+        ],
+    )
+    def test_receipt_date_keeps_its_offset(
+        self, settle_up_client, mock_settleup, receipt_date
+    ):
+        settle_up_client.create_transaction(_payload(receipt_date=receipt_date))
+
+        body = mock_settleup.requests.post.call_args.kwargs["json"]
+        # 2026-11-23T11:00:00Z
+        assert body["dateTime"] == 1795431600000
 
     def test_members_owing_nothing_are_left_out_of_for_whom(
         self, settle_up_client, mock_settleup
@@ -154,8 +211,6 @@ class TestCreateTransaction:
     def test_posts_to_the_group_with_auth_and_a_timeout(
         self, settle_up_client, mock_settleup
     ):
-        mock_settleup.requests.post.return_value.json.return_value = {"name": "tx-1"}
-
         result = settle_up_client.create_transaction(_payload())
 
         assert result == {"name": "tx-1"}

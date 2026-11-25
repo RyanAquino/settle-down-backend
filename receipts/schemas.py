@@ -93,7 +93,8 @@ class OCRReceiptPostOut(Schema):
     jp_shop_name: str = Field(description="The shop name as printed on the receipt")
     tax_percentage: float = Field(
         description=(
-            "The printed tax rate, or the one with the largest taxable base, or 0. "
+            "The printed non-zero tax rate, or the non-zero one with the largest "
+            "taxable base, or 0. "
             "When the costs add up to total_amount it is for display only; "
             "otherwise it is the rate added on top of the costs"
         )

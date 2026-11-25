@@ -33,6 +33,22 @@ def _app_token():
         yield
 
 
+@pytest.fixture(autouse=True)
+def _no_real_catbox_upload():
+    """Fail a test that would upload to the real catbox.moe.
+
+    upload_receipt_image falls back to catbox on any Cloudinary exception,
+    even an assertion failing inside a Cloudinary mock, and a catbox upload
+    is public and cannot be deleted. A test of the fallback patches
+    ``catbox_upload_file`` itself, which takes precedence.
+    """
+    with patch(
+        "receipts.image_hosting.catbox_upload_file",
+        side_effect=AssertionError("a test reached the real catbox.moe upload"),
+    ):
+        yield
+
+
 # A plain receipt as the OCR model transcribes it: one line, 10% tax added on
 # top. Its response is the same as before discounts were allocated.
 RECEIPT = ReceiptScan.model_validate(
@@ -226,6 +242,46 @@ class TestReceiptEndpoint:
         catbox.assert_not_called()
         assert threads["upload"] != threads["read"]
 
+    @override_settings(RECEIPT_IMAGE_MAX_BYTES=len(b"jpeg-bytes") - 1)
+    def test_refuses_a_photo_over_the_size_limit(self, client, ocr_agent):
+        with (
+            patch("receipts.image_hosting.cloudinary_upload_file") as cloudinary,
+            patch("receipts.image_hosting.catbox_upload_file") as catbox,
+        ):
+            response = client.post(RECEIPT_URL, {"file": _upload()}, **AUTH)
+
+        assert response.status_code == 413
+        assert "larger than" in response.json()["detail"]
+        # Refused before it is read, sent to the model or hosted anywhere.
+        ocr_agent.run.assert_not_awaited()
+        cloudinary.assert_not_called()
+        catbox.assert_not_called()
+
+    @override_settings(RECEIPT_IMAGE_MAX_BYTES=len(b"jpeg-bytes"))
+    def test_reads_a_photo_at_the_size_limit(self, client, ocr_agent):
+        with (
+            patch(
+                "receipts.image_hosting.cloudinary_upload_file",
+                return_value="https://res.cloudinary.com/r.jpg",
+            ),
+            patch("receipts.image_hosting.catbox_upload_file") as catbox,
+        ):
+            response = client.post(RECEIPT_URL, {"file": _upload()}, **AUTH)
+
+        assert response.status_code == 200
+        ocr_agent.run.assert_awaited_once()
+        catbox.assert_not_called()
+
+    def test_a_test_cannot_reach_the_real_catbox_upload(self, client, ocr_agent):
+        with (
+            patch(
+                "receipts.image_hosting.cloudinary_upload_file",
+                side_effect=OSError("Cloudinary is down"),
+            ),
+            pytest.raises(AssertionError, match="real catbox"),
+        ):
+            client.post(RECEIPT_URL, {"file": _upload()}, **AUTH)
+
     def test_requires_a_file(self, client, ocr_agent):
         response = client.post(RECEIPT_URL, {}, **AUTH)
 
@@ -399,6 +455,101 @@ def _correction(body, **changes):
     }
 
 
+CENTS = [vector for vector in scans.VECTORS if vector["decimal_places"] == 2]
+
+
+class TestCents:
+    """Every money field of a scan and its correction is in currency units.
+
+    At 0 decimal places a field left in minor units looks right, so these
+    receipts are in cents; expected values are the printed amounts, or shares
+    worked out by hand.
+    """
+
+    @pytest.mark.parametrize("vector", CENTS, ids=[v["name"] for v in CENTS])
+    def test_printed_amounts_come_back_as_printed(self, client, ocr_agent, vector):
+        body = _scan_response(client, ocr_agent, scans.scan(vector))
+
+        assert [item["list_price"] for item in body["receipt_items"]] == (
+            vector["items"]
+        )
+        assert [
+            [line["rate"], line["taxable_amount"], line["tax_amount"]]
+            for line in body["tax_lines"]
+        ] == vector["tax_lines"]
+        assert [
+            [entry["amount"], entry["percentage"], entry["eligible_subtotal"]]
+            for entry in body["adjustments"]
+        ] == [
+            [entry["amount"], entry["percentage"], entry["eligible_subtotal"]]
+            for entry in vector["adjustments"]
+        ]
+        assert body["reconciliation"]["difference"] == (
+            vector["expected"]["difference"]
+        )
+        if all(entry["item_orders"] for entry in body["adjustments"]):
+            response = client.post(
+                ALLOCATIONS_URL,
+                _correction(body),
+                content_type="application/json",
+                **AUTH,
+            )
+            recalculated = response.json()
+            assert [item["list_price"] for item in recalculated["receipt_items"]] == (
+                vector["items"]
+            )
+            assert [item["cost"] for item in recalculated["receipt_items"]] == [
+                item["cost"] for item in body["receipt_items"]
+            ]
+            assert recalculated["reconciliation"] == body["reconciliation"]
+
+    def test_shares_are_in_currency_units(self, client, ocr_agent):
+        body = _scan_response(
+            client, ocr_agent, scans.scan(scans.vector("coupon_before_tax_in_cents"))
+        )
+
+        # 2.50 over 12.99, 7.49 and 5.00 by largest remainder: 1.2745, 0.7349
+        # and 0.4906, with the leftover cent to the largest remainder.
+        assert body["adjustments"][0]["allocations"] == [
+            {"item_order": 1, "amount": 1.27},
+            {"item_order": 2, "amount": 0.74},
+            {"item_order": 3, "amount": 0.49},
+        ]
+        assert [item["discount"] for item in body["receipt_items"]] == [
+            1.27,
+            0.74,
+            0.49,
+        ]
+
+    def test_a_printed_base_comes_back_as_printed(self, client, ocr_agent):
+        receipt = {
+            "decimal_places": 2,
+            "items": [12.99, 7.49],
+            "adjustments": [
+                {
+                    "label": "10% OFF",
+                    "kind": "discount",
+                    "amount": 1.3,
+                    "percentage": 10,
+                    "item_orders": [1],
+                    "eligible_subtotal": 12.99,
+                }
+            ],
+            "tax_lines": [],
+            "amount_due": 19.18,
+        }
+
+        body = _scan_response(client, ocr_agent, scans.scan(receipt))
+
+        (entry,) = body["adjustments"]
+        assert (entry["eligible_subtotal"], entry["amount"], entry["status"]) == (
+            12.99,
+            1.3,
+            "verified",
+        )
+        assert entry["allocations"] == [{"item_order": 1, "amount": 1.3}]
+
+
 class TestReviewFields:
     def test_a_reconciled_scan_lists_each_adjustment_and_its_shares(
         self, client, ocr_agent
@@ -519,6 +670,79 @@ class TestCorrections:
         assert _accepted_by_installed_app(
             {**body, **result, "receipt_items": result["receipt_items"]}
         )
+
+    def test_review_shows_the_rate_the_receipt_reconciles_with(self, client, ocr_agent):
+        # The app checks the recalculated receipt with the rate the scan
+        # showed, so a 0% line must not stand in for the rate added on top.
+        body = self._review(
+            client, ocr_agent, "zero_rate_line_beside_one_rate_added_on_top"
+        )
+        adjustments = body["adjustments"]
+        adjustments[0]["item_orders"] = [1]
+
+        response = self._post(client, _correction(body, adjustments=adjustments))
+
+        assert response.status_code == 200
+        result = response.json()
+        assert result["reconciliation"]["status"] == "reconciled"
+        assert [item["cost"] for item in result["receipt_items"]] == [9.0, 10.0]
+        assert result["tax_percentage"] == body["tax_percentage"] == 8.25
+        assert _accepted_by_installed_app(
+            {**result, "tax_percentage": body["tax_percentage"]}
+        )
+
+    def test_a_line_that_repeats_the_tax_must_be_removed(self, client, ocr_agent):
+        body = self._review(client, ocr_agent, "tax_total_read_as_a_surcharge")
+        adjustments = body["adjustments"]
+        adjustments[0]["item_orders"] = [1, 2]
+
+        response = self._post(client, _correction(body, adjustments=adjustments))
+
+        # No choice of items can settle the tax read a second time: the
+        # answer says what will, rather than asking for items again.
+        assert response.status_code == 422
+        assert response.json()["detail"] == (
+            "'消費税' is the printed tax read a second time: remove it from the receipt."
+        )
+        removed = self._post(client, _correction(body, adjustments=[]))
+        assert removed.status_code == 200
+        assert removed.json()["reconciliation"]["status"] == "reconciled"
+
+    def test_a_surcharge_the_receipt_needs_keeps_the_items_chosen(
+        self, client, ocr_agent
+    ):
+        # A fee left out of the tax base that happens to equal the tax: the
+        # receipt does not add up without it, so it is not the tax read twice.
+        fee = {
+            "decimal_places": 0,
+            "items": [1000],
+            "adjustments": [
+                {
+                    "label": "手数料",
+                    "kind": "surcharge",
+                    "amount": 100,
+                    "percentage": None,
+                    "item_orders": [],
+                    "eligible_subtotal": None,
+                }
+            ],
+            "tax_lines": [[10, 1000, 100]],
+            "amount_due": 1200,
+        }
+        body = _scan_response(client, ocr_agent, scans.scan(fee))
+        adjustments = body["adjustments"]
+        adjustments[0]["item_orders"] = [1]
+
+        response = self._post(client, _correction(body, adjustments=adjustments))
+
+        assert response.status_code == 200
+        result = response.json()
+        # The choice stands instead of coming back unresolved. No reading
+        # covers a fee outside the tax base, so the difference shows.
+        assert [
+            (entry["status"], entry["item_orders"]) for entry in result["adjustments"]
+        ] == [("verified", [1])]
+        assert result["reconciliation"] == {"status": "mismatch", "difference": 100.0}
 
     def test_a_scan_posted_back_unchanged_gives_the_same_money(self, client, ocr_agent):
         body = self._review(client, ocr_agent, "sugi")

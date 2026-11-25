@@ -69,8 +69,8 @@ settledown exposes a [Django Ninja](https://django-ninja.dev/) API under the `/a
 1. The client `POST`s the OCR results and member allocations to `POST /api/v1/settle-up/transactions/`.
 2. `SettleUpClient` signs in through the Firebase Auth REST API (`settle_up/firebase_auth.py`); the token is cached ~58 min in Redis.
 3. Per-member itemized costs are aggregated from the `user_receipt_items` list.
-4. Tax is added per member **only if** validation passes: `sum(member taxes + member items + shared taxes) == total_amount` (float equality — all-or-nothing).
-5. Shared items are split evenly across all group members (fetched from the Settle Up cache).
+4. Tax is added per member **only if** validation passes: `member items + member taxes + shared items + shared taxes == total_amount` (float equality, all-or-nothing).
+5. Shared items are split evenly across the group's active members (fetched from the Settle Up cache); a member Settle Up marks inactive is left out, as it is from the member list.
 6. Integer weights are computed via GCD reduction on the final per-member totals.
 7. A single-item transaction is `POST`ed to Settle Up. `whoPaid` contains the full `total_amount` as the payer's weight, while `forWhom` contains the GCD-reduced per-member weights; `currencyCode` is the group's own currency, with an identity `exchangeRates` entry.
 8. Settle Up returns the transaction ID.
@@ -111,7 +111,7 @@ uv sync --no-dev
 uv run pre-commit install
 ```
 
-> Django migrations are optional — the app has no database models (each app's `models.py` is empty and there are no application migrations). Only Django's built-in apps would migrate. Run the following only if you need Django admin or built-in tables:
+> Django migrations are optional - the app has no database models (each app's `models.py` is empty and there are no application migrations). Only Django's built-in apps would migrate. Run the following only if you need Django's built-in tables:
 >
 > ```bash
 > uv run python manage.py migrate
@@ -128,11 +128,13 @@ All variables are optional and default to an empty value unless noted otherwise.
 | `OPENROUTER_MODEL` | No | Model id sent to OpenRouter for the OCR flow | `google/gemini-3-flash-preview` |
 | `CLOUDINARY_API_SECRET` | No | Cloudinary API secret for image management | _(empty)_ |
 | `CLOUDINARY_API_KEY` | No | Cloudinary API key for image management | _(empty)_ |
+| `CLOUDINARY_CLOUD_NAME` | No | Cloudinary cloud the receipt photos are uploaded to; it must be the account the key and secret belong to, or every upload falls back to public catbox.moe (`CLOUDINARY_URL` is not read) | `dpbqobzo9` |
 | `SETTLE_UP_API_KEY` | No | Firebase web API key used to sign the Settle Up account in (Firebase Auth REST) | _(empty)_ |
 | `SETTLE_UP_API_DOMAIN` | No | Host of Settle Up's Firebase Realtime Database (e.g. `settle-up-live.firebaseio.com`) | _(empty)_ |
 | `SETTLE_UP_USER` | No | Username for Settle Up API authentication | _(empty)_ |
 | `SETTLE_UP_PASSWORD` | No | Password for Settle Up API authentication | _(empty)_ |
 | `UPSTREAM_HTTP_TIMEOUT` | No | Seconds any single upstream HTTP call (Firebase, Settle Up, image hosts) may take | `30` |
+| `RECEIPT_IMAGE_MAX_BYTES` | No | Largest receipt photo the scan reads, in bytes; a larger one is refused with `413` | `20971520` (20 MiB) |
 | `REDIS_URL` | No | Connection string for the Redis cache backend (django_redis) | `redis://localhost:6379/1` |
 | `APP_AUTH` | No | Bearer token clients must send; when unset, every request is rejected | _(empty)_ |
 | `DJANGO_SECRET_KEY` | Yes, in production | Django `SECRET_KEY`; the fallback is an insecure key meant only for local development | _(insecure dev key)_ |
@@ -158,7 +160,11 @@ The simplest way to run the app together with Redis is Docker Compose:
 docker compose up --build
 ```
 
-Inside a container, `localhost` is the container itself, so `docker-compose.yml` points the app at the `redis` service with `REDIS_URL: redis://redis:6379/1`.
+The image holds no secrets: `.env` is excluded from the build, and Compose passes it to the app at run time when there is one, so `APP_AUTH` and the upstream credentials come from it.
+Compose parses `.env` itself and expands `$` in unquoted and double-quoted values, so single-quote a value that contains `$`; `load_dotenv` reads single quotes the same way.
+Inside a container, `localhost` is the container itself, so `docker-compose.yml` points the app at the `redis` service with `REDIS_URL: redis://redis:6379/1`, which takes precedence over a `REDIS_URL` in `.env`.
+Compose publishes Redis on `127.0.0.1:6379` only, so a server run on the host still reaches it at `redis://localhost:6379/1` while other machines on the network cannot.
+Keep it that way: this Redis has no password, and the cache unpickles what it reads, so anyone who can write to it can run code in the app.
 
 To build and run the image manually (without Compose), you must create a network and a Redis container, then connect the app to it:
 
@@ -167,8 +173,10 @@ docker build -t settledown .
 
 docker network create settledown
 docker run -d --name redis --network settledown redis:8
-docker run -p 8000:8000 --network settledown -e REDIS_URL=redis://redis:6379/1 settledown
+docker run -p 8000:8000 --network settledown --env-file .env -e REDIS_URL=redis://redis:6379/1 settledown
 ```
+
+`docker run --env-file` keeps quotes as part of a value, so this recipe needs `.env` values written without quotes.
 
 ## API Reference
 
@@ -187,7 +195,7 @@ Extract receipt items from an uploaded image using OCR via AI.
 
 | Field | Type | Description |
 | --- | --- | --- |
-| `file` | File (UploadedFile) | Image file upload |
+| `file` | File (UploadedFile) | Image file upload, at most `RECEIPT_IMAGE_MAX_BYTES` (20 MiB by default); a larger photo is refused with `413` before it is read, sent to the model or hosted |
 
 **Response** (`200`):
 
@@ -196,7 +204,7 @@ Extract receipt items from an uploaded image using OCR via AI.
 | `receipt_items` | `list[OCRReceiptItemOut]` | Items in printed order, each with `english_name: str`, `japanese_name: str`, `item_order: int` (from 1), `cost: float`, `quantity: int` and `discount: float` |
 | `en_shop_name` | `str` | Shop name in English |
 | `jp_shop_name` | `str` | Shop name as printed |
-| `tax_percentage` | `float` | The printed tax rate (the one with the largest taxable base when several are printed), or 0 |
+| `tax_percentage` | `float` | The printed non-zero tax rate (the one with the largest taxable base when several are printed), or 0 |
 | `total_amount` | `float` | What the group splits: the amount paid after every discount, coupon and points |
 | `receipt_date` | `datetime` | Receipt date |
 | `receipt_image_url` | `str` | URL of the uploaded receipt image |
@@ -272,9 +280,12 @@ There is no model call and no image: the same allocation runs with the chosen it
 | --- | --- | --- |
 | `decimal_places` | `int` | As the scan returned it |
 | `receipt_items` | `list` | Each with `item_order` and `list_price` |
-| `adjustments` | `list` | Each with `printed_label`, `kind`, `amount` and the chosen `item_orders`; `percentage` and `eligible_subtotal` are optional and only echoed |
+| `adjustments` | `list` | Each with `printed_label`, `kind`, `amount` and the chosen `item_orders`, plus `percentage` and `eligible_subtotal` as the scan returned them |
 | `tax_lines` | `list` | The scan's `tax_lines` (optional) |
 | `total_amount` | `float` | The scan's `total_amount` |
+
+The chosen `item_orders` decide the allocation, and the printed `percentage` and `eligible_subtotal` check each choice: one they contradict comes back `assumed`, and when the per-rate tax bases then do not fit, those lines come back `unresolved` with `needs_review` rather than a `mismatch`.
+Send them back as the scan returned them; leaving them out skips that check.
 
 **Response** (`200`): `receipt_items` (each with `item_order`, `list_price`, `cost`, `discount`), `adjustments`, `reconciliation`, `tax_percentage` and `total_amount`, with the same meaning as in the scan response.
 A choice that cannot be applied, such as an unknown item or a discount larger than what its items cost, is a `422` with a `detail` message.
@@ -285,9 +296,14 @@ Retrieve the list of settle-up groups.
 
 **Auth:** Bearer token required.
 
-**Request:** No parameters.
+**Request** (query parameters):
 
-**Response** (`200`): a list of groups, each with:
+| Parameter | Type | Description |
+| --- | --- | --- |
+| `limit` | `int` | Optional, at most this many entries (default `100`, at least `1`) |
+| `offset` | `int` | Optional, entries to skip first (default `0`) |
+
+**Response** (`200`): an object with `count`, the number of groups before `limit` and `offset`, and `items`, the groups newest first, each with:
 
 | Field | Type | Description |
 | --- | --- | --- |
@@ -303,10 +319,13 @@ curl -X GET "http://localhost:8000/api/v1/settle-up/groups/" \
 ```
 
 ```json
-[
-  { "name": "Apartment", "id": "group-abc123", "currency": "JPY" },
-  { "name": "Trip to Taipei", "id": "group-def456", "currency": "TWD" }
-]
+{
+  "items": [
+    { "name": "Apartment", "id": "group-abc123", "currency": "JPY" },
+    { "name": "Trip to Taipei", "id": "group-def456", "currency": "TWD" }
+  ],
+  "count": 2
+}
 ```
 
 ### `GET /api/v1/settle-up/users/`
@@ -319,9 +338,11 @@ Retrieve the users in a specific settle-up group.
 
 | Parameter | Type | Description |
 | --- | --- | --- |
-| `group_id` | `str` | ID of the group |
+| `group_id` | `str` | ID of the group (a Settle Up group key; one containing `.`, `/`, `#`, `$`, `[`, `]`, `?`, `%` or a control character is refused with `422`, since it would change the Firebase path) |
+| `limit` | `int` | Optional, at most this many entries (default `100`, at least `1`) |
+| `offset` | `int` | Optional, entries to skip first (default `0`) |
 
-**Response** (`200`): a list of users, each with:
+**Response** (`200`): an object with `count`, the number of active members before `limit` and `offset`, and `items`, the members, each with:
 
 | Field | Type | Description |
 | --- | --- | --- |
@@ -336,10 +357,13 @@ curl -X GET "http://localhost:8000/api/v1/settle-up/users/?group_id=group-abc123
 ```
 
 ```json
-[
-  { "name": "Member 1", "id": "member-1" },
-  { "name": "Member 2", "id": "member-2" }
-]
+{
+  "items": [
+    { "name": "Member 1", "id": "member-1" },
+    { "name": "Member 2", "id": "member-2" }
+  ],
+  "count": 2
+}
 ```
 
 ### `POST /api/v1/settle-up/transactions/`
@@ -355,14 +379,19 @@ Create a new settlement transaction. Transactions are filed in **the group's cur
 | `purpose` | `str` | Transaction purpose |
 | `paying_member_id` | `str` | ID of the member paying |
 | `tax_percentage` | `float` | Finite tax percentage, such as `8.25` or `10` |
-| `total_amount` | `float` | Total transaction amount |
-| `user_receipt_items` | `list[UserTransactionSchema]` | Receipt items per user (each with `member_id: str`, `cost: float`) |
-| `split_receipt_items` | `list[float]` | Optional split items (defaults to an empty list) |
-| `group_id` | `str` | Group ID |
-| `receipt_date` | `datetime \| None` | Optional receipt date |
+| `total_amount` | `float` | Finite total transaction amount |
+| `user_receipt_items` | `list[UserTransactionSchema]` | Receipt items per user (each with `member_id: str`, `cost: float`, finite and not negative) |
+| `split_receipt_items` | `list[float]` | Optional split items, finite and not negative (defaults to an empty list) |
+| `group_id` | `str` | Group ID (a Settle Up group key; one containing `.`, `/`, `#`, `$`, `[`, `]`, `?`, `%` or a control character is refused with `422`, since it would change the Firebase path) |
+| `receipt_date` | `datetime \| None` | Optional receipt date; an offset is honoured and a date without one is read as UTC (defaults to now) |
 | `receipt_image_url` | `str \| None` | Optional receipt image URL |
 
-**Response:** `204 No Content` (empty body) on success.
+**Response:** `204 No Content` (empty body) when Settle Up filed the transaction.
+The other answers carry a `detail` message:
+
+- `422`: the body is invalid, or no member owes anything at cent precision, so there is nothing to split.
+- `424`: Settle Up refused the transaction (for example an expired sign-in or a group the account no longer belongs to), so nothing was filed and it can be sent again.
+- `502`: Settle Up failed while filing it, so it may or may not have been filed; check the group before sending it again.
 
 **Example:**
 
@@ -381,7 +410,7 @@ curl -X POST "http://localhost:8000/api/v1/settle-up/transactions/" \
     ],
     "split_receipt_items": [],
     "group_id": "group-abc123",
-    "receipt_date": "2026-05-30T12:34:56",
+    "receipt_date": "2026-05-30T03:34:56.000Z",
     "receipt_image_url": "https://res.cloudinary.com/example/image/upload/receipt.jpg"
   }'
 ```
@@ -505,15 +534,15 @@ settledown/
 
 - **No application database:** each app's `models.py` is empty; all state is external (Firebase, Redis, client).
 - **No Django ORM models:** transactions are created only via the Firebase REST API.
-- **No models are registered with the Django admin** (the app has no models).
-- **Tax is all-or-nothing on transactions:** it is computed only if `member_taxes + member_items + shared_tax == total_amount` (float equality).
+- **No Django admin:** the app has no models to manage, and the admin answered requests without the API's bearer token.
+- **Tax is all-or-nothing on transactions:** it is computed only if `member_items + member_taxes + shared_items + shared_taxes == total_amount` (float equality).
 - **Scans with a deduction after tax do not reconcile**, nor do tax-on-top receipts at several rates whose printed bases do not identify each rate's items, nor receipts with a surcharge outside the tax base (such as a US gratuity with a printed tax rate); the app asks for review.
 - **No FX conversion:** transactions are filed in the group's currency and receipt amounts are assumed to match it; a receipt in a different currency than its group is recorded unconverted.
 - **The transaction endpoint trusts `total_amount`:** the scan endpoint reconciles every scan against the printed totals, but a transaction posted directly is not checked.
 - **Settle Up metadata is cached ~24h** (~86,500s): group/member info may be stale until the cache expires.
-- **Shared items are split evenly** across all members; there are no per-member overrides.
+- **Shared items are split evenly** across all active members; there are no per-member overrides.
 - **A receipt image is required for a transaction** (the URL field is optional, but the OCR flow always provides it).
-- **LLM errors raise `ModelRetry`;** translation failures retry with shorter text chunks.
+- **LLM errors raise `ModelRetry`;** a failed translation is logged and the model translates the text itself, so a blocked translator never fails a scan.
 
 ---
 

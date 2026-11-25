@@ -50,13 +50,13 @@ The layout follows the Django Ninja docs: the project package `settledown/` only
 Each app (`receipts/`, `settle_up/`) keeps its routes on a tagged `Router` in `api.py`, its schemas in `schemas.py`, and its services in `services.py`.
 Routes call the functions below them directly, map their errors to HTTP and build their response; the money math and the upstream calls never live in a route, and the two apps never import each other or the project package.
 
-- `/api/v1/receipts/receipt-items/` (`receipts/api.py`) is **the OCR flow**: the route reads the photo with `ocr.read_receipt()`, hosts it with `image_hosting.upload_receipt_image()`, allocates it with `allocation.allocate_scan()` and maps the result onto `OCRReceiptPostOut` with the response helpers in `services.py` (`item_costs`, `adjustments_out`, `reconciliation_out`), which the allocations route shares.
+- `/api/v1/receipts/receipt-items/` (`receipts/api.py`) is **the OCR flow**: the route refuses a photo over `RECEIPT_IMAGE_MAX_BYTES` with a 413 before touching it, reads the photo with `ocr.read_receipt()`, hosts it with `image_hosting.upload_receipt_image()`, allocates it with `allocation.allocate_scan()` and maps the result onto `OCRReceiptPostOut` with the response helpers in `services.py` (`item_costs`, `adjustments_out`, `reconciliation_out`), which the allocations route shares.
   `ocr.read_receipt()` runs an async `pydantic-ai` `Agent` from `get_openrouter_receipt_agent()` (OpenRouter, model `settings.OPENROUTER_MODEL`), which reads the uploaded image with a strict `ToolOutput(ReceiptScan)` (`receipts/transcription.py`).
   The image's media type comes from its bytes (`ocr.image_media_type`), because uploads are phone photos whose declared type is often generic.
   The model only **transcribes**: printed item prices, every printed line that changes the amount to pay (discounts, coupons, points, surcharges, each with its printed amount, percent, base and the items it names), the tax lines and the amount due.
   It never nets a discount into a price or computes a total.
   `receipts/allocation.py` does all of that money math (see below), and the response's `cost` is each line's share after every adjustment.
-  It has one tool, `translate_jp_to_en_text` (Google Translate).
+  It has one tool, `translate_jp_to_en_text` (Google Translate); a failed translation is logged and answered with `TRANSLATION_UNAVAILABLE`, never `ModelRetry`, so a blocked translator cannot spend the run's retries and fail the scan.
   The output validator (`validate_receipt_scan`) asks for a re-read only when a transcription cannot be read as money, and for at most one targeted re-read when it does not add up; it records every attempt in `ScanAttempts` (the run's deps) and the run ends with the best one, not the last.
   If a later read fails outright, `read_receipt()` still answers with the best earlier attempt.
   `get_receipt_agent()` is an alternate OpenAI/LLM7 factory (`gpt-5-mini`) wrapped by `receipts/llm7.py` (`LLM7ChatModel`), a parsing workaround; don't delete it as dead code.
@@ -68,6 +68,7 @@ Routes call the functions below them directly, map their errors to HTTP and buil
   Only the allocation is guarded, so a fault while building the response (a pydantic `ValidationError` is a `ValueError`) stays a 500.
 - `/api/v1/settle-up/...` (`settle_up/api.py`) lists groups, lists members, and creates a transaction.
   All delegate to `SettleUpClient` (`settle_up/services.py`).
+  The app deletes its draft on any 2xx from the transaction route, so a write Settle Up refuses (a 4xx, `SettleUpWriteError.refused`) is a 424 and one it fails (a 5xx) is a 502, never a 204; a body with nothing to split (`NothingToSplitError`) is a 422.
 
 Swagger UI is at `/api/docs` (no trailing slash; authorize with the `APP_AUTH` bearer token).
 
@@ -93,8 +94,8 @@ The normative rules are in its module docstring and pinned by `receipts/tests/fi
   Printed tax the app cannot add itself (no rate printed, or several rates whose printed bases single out their items) is spread into those items' costs.
   Printed tax lines that say the prices include or exclude tax rule out the readings that contradict them, including a rate and tax printed without a base, read against the items.
   When prices include tax and every rate prints its base, some items must make up each base (one unit of slack per line spread over several items); if none do, lines placed on the model's word go back to review.
-  A surcharge that repeats the printed tax total is tax read twice and goes to review.
-- **Bounded work**: exact searches over item sets share one step budget per allocation (`_SEARCH_STEPS`) and give up by failing closed; amounts and line counts are capped (`MAX_AMOUNT`, `MAX_ITEMS`, ...), and the corrections schema caps its lists, so a crafted body cannot tie up a worker.
+  A surcharge that repeats the printed tax total is tax read twice and goes to review, whatever items the model read it under; when a person then chooses its items and the receipt adds up without it, the correction is a 422 asking them to remove it, since no choice of items can settle it.
+- **Bounded work**: exact searches over item sets share one step budget per allocation (`_SEARCH_STEPS`) and give up by failing closed; the per-rate base check builds one bitset per allocation, at most `2 * _MAX_GROUP_TARGET` bits wide, and skips any item larger than it; amounts and line counts are capped (`MAX_AMOUNT`, `MAX_ITEMS`, ...), and the corrections schema caps its lists, so a crafted body cannot tie up a worker.
 - **Fail closed**: `needs_review` or `mismatch` allocates nothing and every `cost` is 0, which the installed app's check always rejects (it refuses a subtotal of 0).
   Don't return printed prices there: they can add up to a misread total (the subtotal before a coupon) and would be filed as is.
   `receipts/tests/client_gate.py` restates that app check, and the vectors assert it accepts exactly the reconciled results.
@@ -151,6 +152,7 @@ A new module is unchecked until it is listed in its app's layers; a new pure mod
 Tests live in each app's `tests/` package, and the project wiring's in `settledown/tests/` (bearer auth, the OpenAPI snapshot, the server entrypoints).
 `settle_up/tests/conftest.py` provides the `settle_up_client` fixture: a real `SettleUpClient` with `firebase_auth`, `requests`, and `cache` patched, so no login/network/Redis happens.
 The fixture routes the mocked `requests.get` **by URL**: `groups/{id}.json` resolves to a mutable `group_json` (default `GROUP_INFO`, currency JPY) that tests change in place to simulate another currency; every other URL falls through to the shared `return_value`.
+The mocked `requests.post` answers with a real `requests.Response` (`firebase_answer(200, {"name": "tx-1"})`), because a `MagicMock` response is always `ok`; build error answers with `firebase_answer` too.
 The mocked members endpoint returns exactly **Member 1 and Member 2** (`GROUP_MEMBERS`), and the split-related assertions in `test_transaction.py` depend on that two-member group.
 
 - `test_transaction.py` exercises `_compute_transaction()` across tax-included / tax-excluded / shared-split / fractional-tax / cent-rounding scenarios.
@@ -160,6 +162,7 @@ The mocked members endpoint returns exactly **Member 1 and Member 2** (`GROUP_ME
 - `test_ocr_agent.py::TestWireSchema` captures what each provider path sends the model (via `httpx.MockTransport`) and asserts every transcribed field is required with no default; on the Gemini path a default would make it silently optional.
 - Each app's `tests/test_api.py` drives its routes through Django's test `Client` (URL conf, middleware, auth) with the outbound boundaries mocked.
   A test that patches `cloudinary_upload_file` must patch `catbox_upload_file` too: the fallback catches every exception, including a failed assertion inside the Cloudinary mock, and would otherwise make a real catbox upload.
+  `receipts/tests/test_api.py` backs this with an autouse fixture that fails any test reaching the real catbox upload.
 
 pytest is configured in `pyproject.toml` (`DJANGO_SETTINGS_MODULE=settledown.settings`, `testpaths`, `-m "not live"`, strict markers/config).
 
